@@ -3,6 +3,7 @@ import json
 from tqdm import tqdm
 import os
 import sys
+from typing import Optional, Tuple
 
 
 def save_jsonl(data, path):
@@ -17,6 +18,110 @@ def save_jsonl(data, path):
         else:
             for sample in tqdm(data):
                 f.write(json.dumps(sample, ensure_ascii=False) + "\n")
+
+
+def append_jsonl(records, path: str, flush: bool = True):
+    """
+    Append a list/iterable of JSON-serializable records to a JSONL file.
+    """
+    if "/" in path:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        for rec in records:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        if flush:
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except Exception:
+                pass
+
+
+def count_valid_jsonl_lines(path: str) -> int:
+    """
+    Count valid JSON lines in a JSONL file (ignores blank lines and malformed JSON lines).
+    This is designed for resume/skip logic without loading the whole file into memory.
+    """
+    if not os.path.exists(path):
+        return 0
+    cnt = 0
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                json.loads(line)
+                cnt += 1
+            except Exception:
+                # ignore malformed trailing line
+                continue
+    return cnt
+
+
+def repair_trailing_incomplete_jsonl(path: str) -> bool:
+    """
+    If a crash left an incomplete trailing JSON line, truncate it.
+    Returns True if file was modified.
+    """
+    if not os.path.exists(path):
+        return False
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+        if not data:
+            return False
+        # If already ends with newline, assume no partial write.
+        if data.endswith(b"\n"):
+            return False
+
+        # Find last newline; truncate to it. If none, truncate to empty.
+        last_nl = data.rfind(b"\n")
+        new_data = data[: last_nl + 1] if last_nl != -1 else b""
+
+        with open(path, "wb") as f:
+            f.write(new_data)
+        return True
+    except Exception:
+        return False
+
+
+def normalize_id(value) -> str:
+    """
+    Normalize an id value to a stable string for dedup/resume matching.
+    This makes resume robust across int/str differences.
+    """
+    if value is None:
+        return ""
+    try:
+        return str(value)
+    except Exception:
+        return ""
+
+
+def load_jsonl_id_set(path: str, id_key: str = "id") -> set:
+    """
+    Load all ids from a pointwise JSONL output file into a set (deduplicated).
+    Ignores blank/malformed lines and lines missing id_key.
+    """
+    ids = set()
+    if not os.path.exists(path):
+        return ids
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if not isinstance(obj, dict):
+                continue
+            if id_key not in obj:
+                continue
+            ids.add(normalize_id(obj.get(id_key)))
+    return ids
 
 
 def load_jsonl(path, max_lines=None):

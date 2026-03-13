@@ -41,8 +41,10 @@ def split_dataset(dataset_path: str, num_parts: int, temp_dir: str, prefix: str 
 def evaluate_scorer_with_gpus(
     scorer_config: Dict[str, Any],
     dataset_path: str,
-    scores_info_path: str
-) -> Dict[str, Any]:
+    scores_info_path: str,
+    output_file: str,
+    resume: bool = False
+) -> str:
     """
     Evaluate a single scorer (supports multi-GPU)
     
@@ -64,14 +66,21 @@ def evaluate_scorer_with_gpus(
         scorer = ScorerFactory.create(name, scorer_config.get("params", {}))
 
     try:
-        result = scorer.evaluate(dataset_path)
-        print(f"[{name}] Evaluation completed")
+        # Prefer streaming-to-file scorers for checkpoint/resume
+        if hasattr(scorer, "evaluate_to_file"):
+            scorer.evaluate_to_file(dataset_path, output_file, resume=resume)
+            print(f"[{name}] Evaluation completed (streaming -> {output_file})")
+        else:
+            # Fallback for scorers without evaluate_to_file()
+            result = scorer.evaluate(dataset_path)
+            save_jsonl(result, output_file)
+            print(f"[{name}] Evaluation completed (saved -> {output_file})")
     finally:
         del scorer
         torch.cuda.empty_cache()
         print(f"[{name}] GPU memory cleaned")
 
-    return {sub_name: result}
+    return output_file
 
 
 def run_single_scorer_job(
@@ -79,8 +88,10 @@ def run_single_scorer_job(
     dataset_path: str,
     num_gpu: int,
     temp_dir: str,
-    scores_info_path: str
-) -> Dict[str, Any]:
+    scores_info_path: str,
+    output_file: str,
+    resume: bool = False
+) -> str:
     """
     Run evaluation task for a single scorer
     
@@ -98,7 +109,10 @@ def run_single_scorer_job(
         - If num_gpu > 1, the process will see multiple GPUs, and the model internally decides how to use them
         - Data will not be split, kept intact
     """
-    return evaluate_scorer_with_gpus(scorer_config, dataset_path, scores_info_path)
+    return evaluate_scorer_with_gpus(
+        scorer_config, dataset_path, scores_info_path,
+        output_file=output_file, resume=resume
+    )
 
 
 def _run_scorer_dp_worker(
@@ -142,18 +156,17 @@ def _run_scorer_dp_worker(
         
         job_temp_dir = os.path.join(temp_dir, f"job_{job_id}")
         os.makedirs(job_temp_dir, exist_ok=True)
+        scorer_output_name = scorer_config["params"].get("sub_name", scorer_name)
+        output_file = os.path.join(job_temp_dir, f"{scorer_output_name}.jsonl")
+        resume = bool(scorer_config["params"].get("resume", False))
         
         # Run scorer evaluation - data is no longer split, entire data_part is processed by this process
         # The process can see all assigned GPUs, and the model internally decides how to use them
-        result = run_single_scorer_job(
+        written_file = run_single_scorer_job(
             scorer_config, data_part, num_gpu_per_job, 
-            job_temp_dir, scores_info_path
+            job_temp_dir, scores_info_path,
+            output_file=output_file, resume=resume
         )
-        
-        # Save results
-        scorer_output_name = next(iter(result))
-        output_file = os.path.join(job_temp_dir, f"{scorer_output_name}.jsonl")
-        save_jsonl(result[scorer_output_name], output_file)
         
         # Clean up vllm cache
         try:
@@ -162,8 +175,8 @@ def _run_scorer_dp_worker(
         except:
             pass
         
-        return_dict[job_id] = output_file
-        print(f"[{scorer_name} - Job {job_id}] Completed: {output_file}")
+        return_dict[job_id] = written_file
+        print(f"[{scorer_name} - Job {job_id}] Completed: {written_file}")
         
     except Exception as e:
         scorer_name = scorer_config["params"]["name"]
@@ -361,6 +374,7 @@ def main():
     data_with_id = ConfigLoader.get_data_with_id(config)
     output_path = ConfigLoader.get_output_path(config)
     scorers_config = ConfigLoader.get_scorer_configs(config)
+    global_resume = bool(config.get("resume", False))
     
     print("\n" + "=" * 80)
     print("Auto Data Parallel Scoring System")
@@ -420,7 +434,8 @@ def main():
             "config": sc,
             "data_parallel": scorer_dp,
             "num_gpu_per_job": scorer_gpu_per_job if scorer_gpu_per_job else 0,
-            "name": scorer_name
+            "name": scorer_name,
+            "resume": bool(sc["params"].get("resume", global_resume))
         })
     
     print("-" * 80)
@@ -437,6 +452,9 @@ def main():
         scorer_config = job["config"]
         data_parallel = job["data_parallel"]
         num_gpu_per_job = job["num_gpu_per_job"]
+        resume = job.get("resume", False)
+        # Make resume visible to worker processes (data-parallel path reads from scorer_config["params"])
+        scorer_config["params"]["resume"] = bool(resume)
         
         print(f"\n{'#'*80}")
         print(f"# Executing Scorer {idx}/{len(scorer_jobs)}: {scorer_name}")
@@ -460,13 +478,13 @@ def main():
                 else:
                     print(f"[{scorer_name}] CPU mode (no GPU needed)")
                 
-                result = run_single_scorer_job(
-                    scorer_config, dataset_path, num_gpu_per_job,
-                    scorer_temp_dir, "./scorers/scores_info.json"
-                )
-                scorer_output_name = next(iter(result))
+                scorer_output_name = scorer_config["params"].get("sub_name", scorer_name)
                 result_file = os.path.join(scorer_temp_dir, f"{scorer_output_name}.jsonl")
-                save_jsonl(result[scorer_output_name], result_file)
+                result_file = run_single_scorer_job(
+                    scorer_config, dataset_path, num_gpu_per_job,
+                    scorer_temp_dir, "./scorers/scores_info.json",
+                    output_file=result_file, resume=resume
+                )
             
             all_scorer_results.append(result_file)
             print(f"✓ [{scorer_name}] Completed: {result_file}")

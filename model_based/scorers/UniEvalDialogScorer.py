@@ -9,6 +9,12 @@ from .UniEval_metric.evaluator import DialogEvaluator
 
 from .base_scorer import BaseScorer
 from .utils import get_total_lines
+from utils.utils_jsonl import (
+    append_jsonl,
+    load_jsonl_id_set,
+    normalize_id,
+    repair_trailing_incomplete_jsonl,
+)
 
 
 class UniEvalDialogScorer(BaseScorer):
@@ -269,5 +275,91 @@ class UniEvalDialogScorer(BaseScorer):
                 results.append(result)
         
         return results
+
+    def evaluate_to_file(self, dataset: str, output_file: str, resume: bool = True) -> str:
+        """Stream batch results to JSONL with checkpoint/resume support."""
+        num_lines = get_total_lines(dataset)
+        batch_size = self.config.get("batch_size", 8)
+
+        done_ids = set()
+        if resume and os.path.exists(output_file):
+            repair_trailing_incomplete_jsonl(output_file)
+            done_ids = load_jsonl_id_set(output_file, id_key="id")
+            if done_ids:
+                print(
+                    f"[UniEvalDialogScorer] Resume enabled. Found {len(done_ids)} unique completed ids in {output_file}."
+                )
+
+        if not resume:
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+            with open(output_file, "w", encoding="utf-8"):
+                pass
+
+        buf_data, buf_ids = [], []
+
+        with open(dataset, "r", encoding="utf-8", errors="ignore") as f:
+            pbar = tqdm(total=num_lines, desc=self.config.get("name", "UniEvalDialogScorer"))
+
+            for line in f:
+                line = line.strip()
+                if not line:
+                    pbar.update(1)
+                    continue
+                item = json.loads(line)
+                item_id = normalize_id(item.get("id", ""))
+                if item_id and item_id in done_ids:
+                    pbar.update(1)
+                    continue
+
+                extracted = self._extract_data(item)
+                buf_data.append({
+                    "source": extracted["source"],
+                    "system_output": extracted["output"],
+                    "context": extracted["context"]
+                })
+                buf_ids.append(item.get("id", ""))
+
+                if len(buf_data) == batch_size:
+                    eval_scores = self.evaluator.evaluate(
+                        buf_data,
+                        dims=self.config.get("dimensions"),
+                        overall=self.config.get("overall", True),
+                        print_result=False,
+                    )
+                    records = []
+                    for _id, score_dict in zip(buf_ids, eval_scores):
+                        rec = {"id": _id}
+                        for dim, score in score_dict.items():
+                            rec[f"UniEval_Dialog_{dim.capitalize()}"] = score
+                        records.append(rec)
+                    append_jsonl(records, output_file, flush=True)
+                    for _id in buf_ids:
+                        nid = normalize_id(_id)
+                        if nid:
+                            done_ids.add(nid)
+                    buf_data.clear()
+                    buf_ids.clear()
+                pbar.update(1)
+
+            if buf_data:
+                eval_scores = self.evaluator.evaluate(
+                    buf_data,
+                    dims=self.config.get("dimensions"),
+                    overall=self.config.get("overall", True),
+                    print_result=False,
+                )
+                records = []
+                for _id, score_dict in zip(buf_ids, eval_scores):
+                    rec = {"id": _id}
+                    for dim, score in score_dict.items():
+                        rec[f"UniEval_Dialog_{dim.capitalize()}"] = score
+                    records.append(rec)
+                append_jsonl(records, output_file, flush=True)
+                buf_data.clear()
+                buf_ids.clear()
+
+            pbar.close()
+
+        return output_file
 
 

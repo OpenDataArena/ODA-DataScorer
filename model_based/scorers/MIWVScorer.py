@@ -8,6 +8,12 @@ from tqdm import tqdm
 
 from .base_scorer import BaseScorer
 from .utils import get_total_lines, get_distance_function
+from utils.utils_jsonl import (
+    append_jsonl,
+    load_jsonl_id_set,
+    normalize_id,
+    repair_trailing_incomplete_jsonl,
+)
 
 
 class MIWVScorer(BaseScorer):
@@ -458,4 +464,109 @@ class MIWVScorer(BaseScorer):
         pbar.close()
         
         return results
+
+    def evaluate_to_file(self, dataset: str, output_file: str, resume: bool = True) -> str:
+        """
+        Stream pointwise results to JSONL (append), enabling resume from existing output_file.
+        """
+        print("Reading dataset...")
+        all_data = []
+        with open(dataset, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    all_data.append(json.loads(line))
+
+        num_lines = len(all_data)
+        print(f"Dataset size: {num_lines}")
+
+        if num_lines != len(self.embeddings):
+            raise ValueError(
+                f"Dataset size ({num_lines}) does not match embedding size ({len(self.embeddings)})"
+            )
+
+        batch_size = self.config.get("batch_size", 8)
+
+        done_ids: set = set()
+        if resume and os.path.exists(output_file):
+            repair_trailing_incomplete_jsonl(output_file)
+            done_ids = load_jsonl_id_set(output_file, id_key="id")
+            if done_ids:
+                print(
+                    f"[MIWVScorer] Resume enabled. Found {len(done_ids)} unique completed ids in {output_file}."
+                )
+
+        if not resume:
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+            with open(output_file, "w", encoding="utf-8"):
+                pass
+
+        buffer_items = []
+        buffer_indices = []
+        buffer_ids = []
+
+        pbar = tqdm(total=num_lines, desc=self.config.get('name', 'MIWVScorer'))
+
+        for i in range(num_lines):
+            item = all_data[i]
+            item_id = normalize_id(item.get("id", ""))
+
+            if item_id and item_id in done_ids:
+                pbar.update(1)
+                continue
+
+            buffer_items.append(item)
+            buffer_indices.append(i)
+            buffer_ids.append(item.get("id", i))
+
+            if len(buffer_items) == batch_size:
+                miwv_scores, _ = self.score_batch(buffer_items, buffer_indices, all_data)
+                records = []
+                for j, (bid, miwv_score, idx) in enumerate(zip(buffer_ids, miwv_scores, buffer_indices)):
+                    most_similar_idx = int(self.most_similar_indices[idx])
+                    most_similar_id = all_data[most_similar_idx].get("id", most_similar_idx)
+                    records.append({
+                        "id": bid,
+                        "score": miwv_score,
+                        "most_similar_idx": most_similar_idx,
+                        "most_similar_id": most_similar_id,
+                    })
+                append_jsonl(records, output_file, flush=True)
+                for bid in buffer_ids:
+                    nid = normalize_id(bid)
+                    if nid:
+                        done_ids.add(nid)
+                pbar.update(len(buffer_items))
+                buffer_items.clear()
+                buffer_indices.clear()
+                buffer_ids.clear()
+
+            else:
+                pbar.update(1)
+
+        if buffer_items:
+            miwv_scores, _ = self.score_batch(buffer_items, buffer_indices, all_data)
+            records = []
+            for j, (bid, miwv_score, idx) in enumerate(zip(buffer_ids, miwv_scores, buffer_indices)):
+                most_similar_idx = int(self.most_similar_indices[idx])
+                most_similar_id = all_data[most_similar_idx].get("id", most_similar_idx)
+                records.append({
+                    "id": bid,
+                    "score": miwv_score,
+                    "most_similar_idx": most_similar_idx,
+                    "most_similar_id": most_similar_id,
+                })
+            append_jsonl(records, output_file, flush=True)
+            for bid in buffer_ids:
+                nid = normalize_id(bid)
+                if nid:
+                    done_ids.add(nid)
+            pbar.update(len(buffer_items))
+            buffer_items.clear()
+            buffer_indices.clear()
+            buffer_ids.clear()
+
+        pbar.close()
+
+        return output_file
 

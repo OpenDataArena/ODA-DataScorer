@@ -4,6 +4,13 @@ import subprocess
 from typing import Dict, List
 from .base_scorer import BaseScorer
 from .utils import get_total_lines
+from utils.utils_jsonl import (
+    append_jsonl,
+    load_jsonl_id_set,
+    normalize_id,
+    repair_trailing_incomplete_jsonl,
+    save_jsonl,
+)
 import pandas as pd
 import glob
 from tqdm import tqdm
@@ -427,4 +434,73 @@ TASKS_TABLE = [TASK]
         except Exception:
             pass  # Silent failure
         
-        return results 
+        return results
+
+    def evaluate_to_file(self, dataset_path: str, output_file: str, resume: bool = True) -> str:
+        """
+        Stream results to JSONL (append), enabling resume from existing output_file.
+        When resuming, only the samples NOT yet in output_file are evaluated via LightEval,
+        and new results are appended incrementally.
+        """
+        done_ids = set()
+        if resume and os.path.exists(output_file):
+            repair_trailing_incomplete_jsonl(output_file)
+            done_ids = load_jsonl_id_set(output_file, id_key="id")
+            if done_ids:
+                print(
+                    f"[FailRateScorer] Resume enabled. Found {len(done_ids)} unique completed ids in {output_file}."
+                )
+
+        if not resume:
+            os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
+            with open(output_file, "w", encoding="utf-8"):
+                pass
+
+        remaining_items = []
+        with open(dataset_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                nid = normalize_id(item.get("id", ""))
+                if nid and nid in done_ids:
+                    continue
+                remaining_items.append(item)
+
+        if not remaining_items:
+            print(
+                f"[FailRateScorer] All samples already in output. Skipping LightEval."
+            )
+            return output_file
+
+        print(
+            f"[FailRateScorer] {len(remaining_items)} samples remaining to evaluate "
+            f"(skipped {len(done_ids)} already completed)."
+        )
+
+        import tempfile
+        tmp_dir = os.path.dirname(dataset_path) or "."
+        tmp_fd, tmp_dataset = tempfile.mkstemp(suffix=".jsonl", dir=tmp_dir)
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as tmp_f:
+                for item in remaining_items:
+                    tmp_f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+            results = self.evaluate(tmp_dataset)
+
+            os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
+            append_jsonl(results, output_file, flush=True)
+
+            for r in results:
+                nid = normalize_id(r.get("id", ""))
+                if nid:
+                    done_ids.add(nid)
+        finally:
+            if os.path.exists(tmp_dataset):
+                os.remove(tmp_dataset)
+
+        return output_file

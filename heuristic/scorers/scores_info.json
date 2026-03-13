@@ -91,6 +91,14 @@
         {
             "name": "GramEntropyScorer",
             "module": "scorers.GramEntropyScorer"
+        },
+        {
+            "name": "LogicalWordCountScorer",
+            "module": "scorers.LogicalWordCountScorer"
+        },
+        {
+            "name": "CompressRatioScorer",
+            "module": "scorers.CompressRatioScorer"
         }
     ]
 }

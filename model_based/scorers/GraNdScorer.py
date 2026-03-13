@@ -6,6 +6,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import os
 from .utils import get_total_lines
 from tqdm import tqdm
+from utils.utils_jsonl import append_jsonl, repair_trailing_incomplete_jsonl, load_jsonl_id_set, normalize_id
 
 
 class GraNdScorer(BaseScorer):
@@ -126,9 +127,9 @@ class GraNdScorer(BaseScorer):
         num_lines = get_total_lines(dataset)
         results: List[Dict] = []
 
-        with open(dataset, 'r', encoding='utf-8') as f:
+        with open(dataset, 'r', encoding='utf-8', errors="ignore") as f:
             pbar = tqdm(total=num_lines, desc=self.config.get(
-                'name', 'GraNdscorer'))
+                'name', 'GraNdScorer'))
             for line in f:
                 item = json.loads(line.strip())
                 item_id = item.get("id", "")
@@ -144,4 +145,55 @@ class GraNdScorer(BaseScorer):
             pbar.close()
 
         return results
+
+    def evaluate_to_file(self, dataset: str, output_file: str, resume: bool = True) -> str:
+        """
+        Stream pointwise results to JSONL (append), enabling resume from existing output_file.
+        Assumption: one output JSON line per input JSON line, and order is consistent.
+        """
+        num_lines = get_total_lines(dataset)
+
+        done_ids = set()
+        if resume and os.path.exists(output_file):
+            repair_trailing_incomplete_jsonl(output_file)
+            done_ids = load_jsonl_id_set(output_file, id_key="id")
+            if done_ids:
+                print(
+                    f"[GraNdScorer] Resume enabled. Found {len(done_ids)} unique completed ids in {output_file}."
+                )
+
+        if not resume:
+            os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
+            with open(output_file, "w", encoding="utf-8"):
+                pass
+
+        with open(dataset, "r", encoding="utf-8", errors="ignore") as f:
+            pbar = tqdm(total=num_lines, desc=self.config.get("name", "GraNdScorer"))
+
+            for line in f:
+                line = line.strip()
+                if not line:
+                    pbar.update(1)
+                    continue
+                item = json.loads(line)
+                item_id = normalize_id(item.get("id", ""))
+                if item_id and item_id in done_ids:
+                    pbar.update(1)
+                    continue
+
+                # Calculate gradient norm
+                gradient_norm = self.score_item(item)
+                record = {
+                    "id": item.get("id", ""),
+                    "score": gradient_norm
+                }
+                append_jsonl([record], output_file, flush=True)
+                nid = normalize_id(item.get("id", ""))
+                if nid:
+                    done_ids.add(nid)
+                pbar.update(1)
+
+            pbar.close()
+
+        return output_file
 

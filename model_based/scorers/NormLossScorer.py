@@ -8,6 +8,7 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from tqdm import tqdm
 from .utils import get_total_lines
 import warnings
+from utils.utils_jsonl import append_jsonl, repair_trailing_incomplete_jsonl, load_jsonl_id_set, normalize_id
 
 
 class NormLossScorer(BaseScorer):
@@ -36,24 +37,67 @@ class NormLossScorer(BaseScorer):
             print(f"Using specified batch_size: {self.config['batch_size']}.")
 
     def _setup(self):
+        # These outputs are NOT needed for normalized-loss scoring and can significantly increase memory usage.
+        output_hidden_states = bool(self.config.get("output_hidden_states", False))
+        output_attentions = bool(self.config.get("output_attentions", False))
+
+        # KV cache is useful for generation, but not needed for full-sequence NLL computation and can increase memory.
+        use_cache = bool(self.config.get("use_cache", False))
+
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         try:
             self.model = AutoModelForCausalLM.from_pretrained(
-                self.config['model'])
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.config['model'])
+                self.config["model"],
+                device_map="auto",
+                torch_dtype="auto",
+                output_hidden_states=output_hidden_states,
+                output_attentions=output_attentions,
+            )
+            self.tokenizer = AutoTokenizer.from_pretrained(self.config["model"])
         except Exception as e:
             print(
                 f"Load specified model failed ({e}), fall back to meta-llama/Llama-3.1-8B")
             self.model = AutoModelForCausalLM.from_pretrained(
-                'meta-llama/Llama-3.1-8B')
+                "meta-llama/Llama-3.1-8B",
+                device_map="auto",
+                torch_dtype="auto",
+                output_hidden_states=output_hidden_states,
+                output_attentions=output_attentions,
+            )
             self.tokenizer = AutoTokenizer.from_pretrained(
-                'meta-llama/Llama-3.1-8B')
+                "meta-llama/Llama-3.1-8B")
 
-        self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.model.to(self.device)
         self.model.eval()
-        print("Setting up NormLossScorer successfully")
+
+        # Ensure pad_token exists for batch padding.
+        if getattr(self.tokenizer, "pad_token", None) is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            try:
+                if getattr(self.model.config, "pad_token_id", None) is None:
+                    self.model.config.pad_token_id = self.tokenizer.eos_token_id
+            except Exception:
+                pass
+
+        # Ensure model config matches our scoring usage.
+        try:
+            self.model.config.use_cache = use_cache
+        except Exception:
+            pass
+
+        # Clamp max_length to the model's supported context length if available.
+        try:
+            model_max_pos = getattr(self.model.config, "max_position_embeddings", None)
+            if isinstance(model_max_pos, int) and model_max_pos > 0:
+                if int(self.config.get("max_length", 0) or 0) > model_max_pos:
+                    print(
+                        f"Warning: config.max_length ({self.config['max_length']}) > model.max_position_embeddings "
+                        f"({model_max_pos}). Clamping max_length to {model_max_pos} to avoid OOM/invalid positions."
+                    )
+                    self.config["max_length"] = model_max_pos
+        except Exception:
+            pass
+
+        print(f"Setting up NormLossScorer successfully on {self.device}")
 
     def score_item(self, data_item):
         return self.score_batch([data_item])[0]
@@ -97,8 +141,8 @@ class NormLossScorer(BaseScorer):
         labels[attention_mask == 0] = -100
 
         scores = []
-        with torch.no_grad():
-            outputs = self.model(input_ids=input_ids, attention_mask=attention_mask)
+        with torch.inference_mode():
+            outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, use_cache=False)
             
             # Get loss for each token (using natural logarithm)
             # Use ignore_index=-100 to ignore padding tokens
@@ -170,4 +214,72 @@ class NormLossScorer(BaseScorer):
             pbar.close()
 
         return results
+
+    def evaluate_to_file(self, dataset: str, output_file: str, resume: bool = True) -> str:
+        """
+        Stream pointwise results to JSONL (append), enabling resume from existing output_file.
+        Resume logic is id-based: skip any sample whose id already exists in output_file.
+        """
+        num_lines = get_total_lines(dataset)
+        batch_size = self.config.get("batch_size")
+
+        done_ids = set()
+        if resume and os.path.exists(output_file):
+            repair_trailing_incomplete_jsonl(output_file)
+            done_ids = load_jsonl_id_set(output_file, id_key="id")
+            if done_ids:
+                print(f"[NormLossScorer] Resume enabled. Found {len(done_ids)} unique completed ids in {output_file}.")
+
+        if not resume:
+            os.makedirs(os.path.dirname(output_file), exist_ok=True)
+            with open(output_file, "w", encoding="utf-8"):
+                pass
+
+        buf_items, buf_ids = [], []
+
+        with open(dataset, "r", encoding="utf-8", errors="ignore") as f:
+            pbar = tqdm(total=num_lines, desc=self.config.get("name", "NormLossScorer"))
+
+            for line in f:
+                line = line.strip()
+                if not line:
+                    pbar.update(1)
+                    continue
+
+                item = json.loads(line)
+                item_id = normalize_id(item.get("id", ""))
+                if item_id and item_id in done_ids:
+                    pbar.update(1)
+                    continue
+
+                buf_items.append(item)
+                buf_ids.append(item.get("id", ""))
+
+                if len(buf_items) == batch_size:
+                    batch_scores = self.score_batch(buf_items)
+                    records = [{"id": _id, "score": sc} for _id, sc in zip(buf_ids, batch_scores)]
+                    append_jsonl(records, output_file, flush=True)
+                    for _id in buf_ids:
+                        nid = normalize_id(_id)
+                        if nid:
+                            done_ids.add(nid)
+                    buf_items.clear()
+                    buf_ids.clear()
+
+                pbar.update(1)
+
+            if buf_items:
+                batch_scores = self.score_batch(buf_items)
+                records = [{"id": _id, "score": sc} for _id, sc in zip(buf_ids, batch_scores)]
+                append_jsonl(records, output_file, flush=True)
+                for _id in buf_ids:
+                    nid = normalize_id(_id)
+                    if nid:
+                        done_ids.add(nid)
+                buf_items.clear()
+                buf_ids.clear()
+
+            pbar.close()
+
+        return output_file
 

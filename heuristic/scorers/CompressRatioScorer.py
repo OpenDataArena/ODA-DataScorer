@@ -1,123 +1,148 @@
 import json
 import os
+import zlib
+from concurrent.futures import ProcessPoolExecutor
 from typing import Dict, List
+
+from tqdm import tqdm
+
 from .base_scorer import BaseScorer
 from .utils import get_total_lines
-from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor
-from utils.utils_jsonl import append_jsonl, repair_trailing_incomplete_jsonl, load_jsonl_id_set, normalize_id
+from utils.utils_jsonl import (
+    append_jsonl,
+    load_jsonl_id_set,
+    normalize_id,
+    repair_trailing_incomplete_jsonl,
+)
+
+
+def _calc_compression_ratio(text: str, level: int = 9) -> Dict:
+    """
+    计算压缩比：compressed_size / original_size
+    - original_size: 原始字节数
+    - compressed_size: zlib(level) 压缩后的字节数
+    - ratio: 压缩比（越小越“可压缩/重复度高”）
+    """
+    if not text:
+        return {"original_size": 0, "compressed_size": 0, "ratio": 0.0}
+
+    original_bytes = text.encode("utf-8", errors="ignore")
+    original_size = len(original_bytes)
+    if original_size == 0:
+        return {"original_size": 0, "compressed_size": 0, "ratio": 0.0}
+
+    compressed_bytes = zlib.compress(original_bytes, level=level)
+    compressed_size = len(compressed_bytes)
+    ratio = compressed_size / original_size
+    return {
+        "original_size": original_size,
+        "compressed_size": compressed_size,
+        "ratio": round(float(ratio), 4),
+    }
 
 
 # Helper function for multiprocessing (must be at module level for pickling)
 def _process_single_line(args):
     """Helper function to process a single line (for multiprocessing)
-    
+
     Args:
-        args: Tuple of (line, fields)
-    
+        args: Tuple of (line, fields, level)
+
     Returns:
-        Dict containing id and Str_Length
+        Dict containing id and score (ratio). Optionally includes sizes.
     """
-    line, fields = args
-    
+    line, fields, level = args
+
     try:
         item = json.loads(line.strip())
-        
-        # Extract specified fields from data item
+
         parts = []
         for field in fields:
             if field in item and item[field]:
                 parts.append(str(item[field]))
-        
-        # Join all fields with newline separator
         text = "\n".join(parts) if parts else ""
-        
-        # Calculate string length
-        str_length = len(text)
-        
-        return {
-            "id": item.get("id", ""),
-            "score": str_length
-        }
+
+        metrics = _calc_compression_ratio(text, level=level)
+        return {"id": item.get("id", ""), "score": metrics["ratio"]}
     except Exception as e:
-        # If processing fails, return a result with error marker
         return {
-            "id": item.get("id", "unknown") if 'item' in locals() else "unknown",
-            "score": 0,
-            "error": str(e)
+            "id": item.get("id", "unknown") if "item" in locals() else "unknown",
+            "score": 0.0,
+            "error": str(e),
         }
 
 
-class StrLengthScorer(BaseScorer):
+class CompressRatioScorer(BaseScorer):
     def _validate_config(self):
-        """Validate configuration parameters"""
-        # Check if fields are specified, default is ["instruction", "input", "output"]
-        if "fields" not in self.config or not isinstance(self.config["fields"], list) or len(self.config["fields"]) == 0:
+        # fields: 默认与 TokenLengthScorer 一致
+        if (
+            "fields" not in self.config
+            or not isinstance(self.config["fields"], list)
+            or len(self.config["fields"]) == 0
+        ):
             print(
-                "Warning: No fields specified in config. Using default fields: ['instruction', 'input', 'output'].")
-            self.config['fields'] = ['instruction', 'input', 'output']
+                "Warning: No fields specified in config. Using default fields: ['instruction', 'input', 'output']."
+            )
+            self.config["fields"] = ["instruction", "input", "output"]
         else:
             print(f"Using specified fields: {self.config['fields']}.")
 
-        # Check max_workers (process count)
-        if "max_workers" not in self.config or not isinstance(self.config["max_workers"], int) or self.config["max_workers"] <= 0:
-            # Default to CPU core count
+        # zlib compression level: 0~9
+        level = self.config.get("level", 9)
+        if not isinstance(level, int) or not (0 <= level <= 9):
+            print("Warning: level should be int in [0, 9], using default value 9.")
+            level = 9
+        self.config["level"] = level
+
+        # max_workers
+        if (
+            "max_workers" not in self.config
+            or not isinstance(self.config["max_workers"], int)
+            or self.config["max_workers"] <= 0
+        ):
             default_workers = max(1, os.cpu_count() or 1)
-            print(f"Warning: No/invalid max_workers, using default value of {default_workers} (CPU count).")
-            self.config['max_workers'] = default_workers
+            print(
+                f"Warning: No/invalid max_workers, using default value of {default_workers} (CPU count)."
+            )
+            self.config["max_workers"] = default_workers
         else:
             print(f"Using specified max_workers: {self.config['max_workers']}.")
 
     def _setup(self):
-        """Initialize scorer"""
-        print("Setting up StrLengthScorer successfully")
+        print("Setting up CompressRatioScorer successfully")
 
-    def score_item(self, data_item: Dict) -> int:
-        """Calculate string length of a single data item"""
-        fields = self.config['fields']
-        
-        # Extract specified fields from data item
+    def score_item(self, data_item: Dict) -> float:
+        fields = self.config["fields"]
         parts = []
         for field in fields:
             if field in data_item and data_item[field]:
                 parts.append(str(data_item[field]))
-
-        # Join all fields with newline separator
         text = "\n".join(parts) if parts else ""
-
-        # Calculate string length
-        try:
-            str_length = len(text)
-            return str_length
-        except Exception as e:
-            print(
-                f"[score_item] Error calculating length for item: {text[:100]}... \nError: {e}")
-            return 0  # Return 0 when error occurs
+        metrics = _calc_compression_ratio(text, level=self.config.get("level", 9))
+        return metrics["ratio"]
 
     def evaluate(self, dataset) -> List[Dict]:
-        """Evaluate the entire dataset"""
         num_lines = get_total_lines(dataset)
-        max_workers = self.config.get('max_workers', 1)
-        fields = self.config.get('fields', ['instruction', 'input', 'output'])
-        
+        max_workers = self.config.get("max_workers", 1)
+        fields = self.config.get("fields", ["instruction", "input", "output"])
+        level = self.config.get("level", 9)
+
         print(f"Using {max_workers} worker(s) for parallel processing")
-        
-        # Read all lines and prepare tasks
-        with open(dataset, 'r', encoding='utf-8') as f:
+
+        with open(dataset, "r", encoding="utf-8", errors="ignore") as f:
             lines = [line for line in f]
-        
-        # Prepare task parameters
-        tasks = [(line, fields) for line in lines]
-        
-        # Use ProcessPoolExecutor for parallel processing
+
+        tasks = [(line, fields, level) for line in lines]
+
         with ProcessPoolExecutor(max_workers=max_workers) as executor:
-            # Use tqdm to display progress bar
-            results = list(tqdm(
-                executor.map(_process_single_line, tasks),
-                total=num_lines,
-                desc=self.config.get('name', 'StrLengthScorer')
-            ))
-        
+            results = list(
+                tqdm(
+                    executor.map(_process_single_line, tasks),
+                    total=num_lines,
+                    desc=self.config.get("name", "CompressRatioScorer"),
+                )
+            )
+
         return results
 
     def evaluate_to_file(self, dataset: str, output_file: str, resume: bool = True) -> str:
@@ -127,14 +152,17 @@ class StrLengthScorer(BaseScorer):
         """
         num_lines = get_total_lines(dataset)
         max_workers = self.config.get("max_workers", 1)
-        fields = self.config.get("fields", ['instruction', 'input', 'output'])
+        fields = self.config.get("fields", ["instruction", "input", "output"])
+        level = self.config.get("level", 9)
 
         done_ids = set()
         if resume and os.path.exists(output_file):
             repair_trailing_incomplete_jsonl(output_file)
             done_ids = load_jsonl_id_set(output_file, id_key="id")
             if done_ids:
-                print(f"[StrLengthScorer] Resume enabled. Found {len(done_ids)} unique completed ids in {output_file}.")
+                print(
+                    f"[CompressRatioScorer] Resume enabled. Found {len(done_ids)} unique completed ids in {output_file}."
+                )
 
         if not resume:
             out_dir = os.path.dirname(output_file)
@@ -148,7 +176,7 @@ class StrLengthScorer(BaseScorer):
             chunk_size = 2000
 
         print(f"Using {max_workers} worker(s) for parallel processing")
-        pbar = tqdm(total=num_lines, desc=self.config.get("name", "StrLengthScorer"))
+        pbar = tqdm(total=num_lines, desc=self.config.get("name", "CompressRatioScorer"))
 
         buf_records = []
         chunk_args = []
@@ -172,7 +200,7 @@ class StrLengthScorer(BaseScorer):
                         pbar.update(1)
                         continue
 
-                    chunk_args.append((line, fields))
+                    chunk_args.append((line, fields, level))
 
                     if len(chunk_args) >= chunk_size:
                         for rec in executor.map(_process_single_line, chunk_args):

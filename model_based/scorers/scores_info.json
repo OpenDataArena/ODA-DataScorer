@@ -13,8 +13,8 @@
             "module": "scorers.IFDScorer"
         },
         {
-            "name": "SkyworkRewardScorer",
-            "module": "scorers.SkyworkRewardScorer"
+            "name": "SkyworkLlamaScorer",
+            "module": "scorers.SkyworkLlamaScorer"
         },
         {
             "name": "ThinkingProbScorer",
@@ -23,10 +23,6 @@
         {
             "name": "FailRateScorer",
             "module": "scorers.FailRateScorer"
-        },
-        {
-            "name": "AnswerProbScorer",
-            "module": "scorers.AnswerProbScorer"
         },
         {
             "name": "HESScorer",
@@ -151,6 +147,14 @@
         {
             "name": "InfOrmScorer",
             "module": "scorers.InfOrmScorer"
+        },
+        {
+            "name": "SkyworkQwenScorer",
+            "module": "scorers.SkyworkQwenScorer"
+        },
+        {
+            "name": "ComplexityHFScorer",
+            "module": "scorers.ComplexityHFScorer"
         }
     ]
 }

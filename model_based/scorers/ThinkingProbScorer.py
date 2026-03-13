@@ -1,15 +1,20 @@
-from .base_scorer import BaseScorer
-import json
-from typing import Dict, List
-from transformers import AutoTokenizer
-import os
-from transformers import AutoTokenizer
-from tqdm import tqdm
-from .utils import get_total_lines
 import json
 import math
+import os
+from typing import Dict, List
+
 from tqdm import tqdm
+from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
+
+from .base_scorer import BaseScorer
+from .utils import get_total_lines
+from utils.utils_jsonl import (
+    append_jsonl,
+    load_jsonl_id_set,
+    normalize_id,
+    repair_trailing_incomplete_jsonl,
+)
 
 
 class ThinkingProbScorer(BaseScorer):
@@ -38,7 +43,6 @@ class ThinkingProbScorer(BaseScorer):
 
     def _setup(self):
         try:
-            import os
             os.environ["VLLM_USE_V1"] = "0"
 
             self.model = LLM(
@@ -49,7 +53,7 @@ class ThinkingProbScorer(BaseScorer):
                 gpu_memory_utilization=0.9,
             )
             self.tokenizer = AutoTokenizer.from_pretrained(
-                self.config['model'], 
+                self.config['model'],
                 cache_dir='./cache',
                 trust_remote_code=True
             )
@@ -57,10 +61,9 @@ class ThinkingProbScorer(BaseScorer):
             print(
                 f"Warning: Failed to load model from remote. Error: {e}")
             print("Loading THU-KEG/AdaptThink-7B-delta0.05 model.")
-            
-            import os
+
             os.environ["VLLM_USE_V1"] = "0"
-            
+
             self.model = LLM(
                 model='THU-KEG/AdaptThink-7B-delta0.05',
                 enforce_eager=True,
@@ -69,7 +72,7 @@ class ThinkingProbScorer(BaseScorer):
                 gpu_memory_utilization=0.9,
             )
             self.tokenizer = AutoTokenizer.from_pretrained(
-                'THU-KEG/AdaptThink-7B-delta0.05', 
+                'THU-KEG/AdaptThink-7B-delta0.05',
                 cache_dir='./cache',
                 trust_remote_code=True
             )
@@ -79,31 +82,16 @@ class ThinkingProbScorer(BaseScorer):
     def score_item(self, data_item):
         pass
 
-    def evaluate(self, dataset) -> List[Dict]:
-        num_lines = get_total_lines(dataset)
+    def _build_prompt(self, instruction: str) -> str:
+        messages = [{"role": "user", "content": instruction}]
+        return self.tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+            enable_thinking=False,
+        )
 
-        ds, results = [], []
-
-        with open(dataset, 'r') as f:
-            for line in tqdm(f, total=num_lines, desc=self.config['name']):
-                ds.append(json.loads(line.strip()))
-
-        prompts = [item['instruction'] for item in ds]
-
-        messages = [
-            [{"role": "user", "content": item}] for item in prompts
-        ]
-
-        text = [
-            self.tokenizer.apply_chat_template(
-                msg,
-                tokenize=False,
-                add_generation_prompt=True,
-                enable_thinking=False,
-            )
-            for msg in tqdm(messages)
-        ]
-
+    def _score_batch_texts(self, batch_texts: List[str]) -> List[float]:
         sampling_params = SamplingParams(
             temperature=0.0,
             top_p=1.0,
@@ -112,25 +100,120 @@ class ThinkingProbScorer(BaseScorer):
             include_stop_str_in_output=True,
             logprobs=20,
         )
+        outputs = self.model.generate(batch_texts, sampling_params)
+        scores = []
+        for output in outputs:
+            if 151649 not in output.outputs[0].logprobs[0]:
+                prob_eot = 0
+            else:
+                logprob_eot = output.outputs[0].logprobs[0][151649]
+                prob_eot = math.exp(logprob_eot.logprob)
+            scores.append(round(1 - prob_eot, 3))
+        return scores
 
-        for i in tqdm(range(0, len(text), self.config['batch_size'])):
-            end = min(i + self.config['batch_size'], len(text))
-            batch_text = text[i:end]
+    def evaluate(self, dataset) -> List[Dict]:
+        num_lines = get_total_lines(dataset)
+        batch_size = self.config['batch_size']
+        results: List[Dict] = []
 
-            outputs = self.model.generate(batch_text, sampling_params)
+        buf_items, buf_texts = [], []
 
-            for j, output in enumerate(outputs):
-                if 151649 not in output.outputs[0].logprobs[0]:
-                    prob_eot = 0
-                else:
-                    logprob_eot = output.outputs[0].logprobs[0][151649]
-                    prob_eot = math.exp(logprob_eot.logprob)
+        with open(dataset, 'r', encoding='utf-8', errors='ignore') as f:
+            pbar = tqdm(total=num_lines, desc=self.config.get('name', 'ThinkingProbScorer'))
+            for line in f:
+                line = line.strip()
+                if not line:
+                    pbar.update(1)
+                    continue
+                item = json.loads(line)
+                buf_items.append(item)
+                buf_texts.append(self._build_prompt(item['instruction']))
 
-                difficulty = round(1 - prob_eot, 3)
+                if len(buf_items) == batch_size:
+                    batch_scores = self._score_batch_texts(buf_texts)
+                    results.extend(
+                        {"id": it['id'], "score": sc}
+                        for it, sc in zip(buf_items, batch_scores)
+                    )
+                    buf_items.clear()
+                    buf_texts.clear()
+                pbar.update(1)
 
-                results.append({
-                    "id": ds[i + j]['id'],
-                    "score": difficulty
-                })
+            if buf_items:
+                batch_scores = self._score_batch_texts(buf_texts)
+                results.extend(
+                    {"id": it['id'], "score": sc}
+                    for it, sc in zip(buf_items, batch_scores)
+                )
+                buf_items.clear()
+                buf_texts.clear()
+            pbar.close()
 
         return results
+
+    def evaluate_to_file(self, dataset: str, output_file: str, resume: bool = True) -> str:
+        num_lines = get_total_lines(dataset)
+        batch_size = self.config.get('batch_size', 1)
+
+        done_ids: set = set()
+        if resume and os.path.exists(output_file):
+            repair_trailing_incomplete_jsonl(output_file)
+            done_ids = load_jsonl_id_set(output_file, id_key="id")
+            if done_ids:
+                print(
+                    f"[ThinkingProbScorer] Resume enabled. Found {len(done_ids)} unique completed ids in {output_file}."
+                )
+
+        if not resume:
+            os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
+            with open(output_file, "w", encoding="utf-8"):
+                pass
+
+        buf_items, buf_texts, buf_ids = [], [], []
+
+        with open(dataset, 'r', encoding='utf-8', errors='ignore') as f:
+            pbar = tqdm(total=num_lines, desc=self.config.get('name', 'ThinkingProbScorer'))
+
+            for line in f:
+                line = line.strip()
+                if not line:
+                    pbar.update(1)
+                    continue
+                item = json.loads(line)
+                item_id = normalize_id(item.get("id", ""))
+                if item_id and item_id in done_ids:
+                    pbar.update(1)
+                    continue
+
+                buf_items.append(item)
+                buf_texts.append(self._build_prompt(item['instruction']))
+                buf_ids.append(item.get("id", ""))
+
+                if len(buf_items) == batch_size:
+                    batch_scores = self._score_batch_texts(buf_texts)
+                    records = [{"id": _id, "score": sc} for _id, sc in zip(buf_ids, batch_scores)]
+                    append_jsonl(records, output_file, flush=True)
+                    for _id in buf_ids:
+                        nid = normalize_id(_id)
+                        if nid:
+                            done_ids.add(nid)
+                    buf_items.clear()
+                    buf_texts.clear()
+                    buf_ids.clear()
+                pbar.update(1)
+
+            if buf_items:
+                batch_scores = self._score_batch_texts(buf_texts)
+                records = [{"id": _id, "score": sc} for _id, sc in zip(buf_ids, batch_scores)]
+                append_jsonl(records, output_file, flush=True)
+                for _id in buf_ids:
+                    nid = normalize_id(_id)
+                    if nid:
+                        done_ids.add(nid)
+                buf_items.clear()
+                buf_texts.clear()
+                buf_ids.clear()
+
+            pbar.close()
+
+        return output_file
