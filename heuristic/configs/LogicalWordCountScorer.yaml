@@ -8,8 +8,8 @@ scorers:
   - instruction
   - input
   - output
-  # Fine words can be directly written here (also supports fine_words_path to specify a vocabulary file, one word per line)
-  fine_words:
+  # Logical Words can be directly written here (also supports logical_words_path to specify a vocabulary file, one word per line)
+  logical_words:
   - Therefore
   - Thus
   - Hence
@@ -57,5 +57,5 @@ scorers:
   - Given
   
   match_mode: token
-  return_counts: false # whether to output the count of each fine word to the counts field (default false)
+  return_counts: false # whether to output the count of each Logical Word to the counts field (default false)
   max_workers: 16

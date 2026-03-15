@@ -13,31 +13,31 @@ from utils.utils_jsonl import append_jsonl, repair_trailing_incomplete_jsonl, lo
 # -----------------------------
 # Multiprocessing helpers
 # -----------------------------
-_GLOBAL_FINE_WORDS_LOWER: List[str] = []
+_GLOBAL_LOGICAL_WORDS_LOWER: List[str] = []
 _GLOBAL_RETURN_COUNTS: bool = False
-_GLOBAL_ORIG_FINE_WORDS: List[str] = []
+_GLOBAL_ORIG_LOGICAL_WORDS: List[str] = []
 _GLOBAL_FIELDS: List[str] = []
 _GLOBAL_MATCH_MODE: str = "substring"
 _GLOBAL_PUNCT_TRANSLATION = None
-_GLOBAL_FINE_WORDS_SET = None
+_GLOBAL_LOGICAL_WORDS_SET = None
 
 
 def _init_worker(
-    fine_words_lower: List[str],
+    logical_words_lower: List[str],
     return_counts: bool,
-    orig_fine_words: Optional[List[str]] = None,
+    orig_logical_words: Optional[List[str]] = None,
     fields: Optional[List[str]] = None,
     match_mode: str = "substring",
 ):
     """
     Initializer for ProcessPoolExecutor workers.
-    Avoids pickling fine_words on every task submission (more efficient than passing in args).
+    Avoids pickling logical_words on every task submission (more efficient than passing in args).
     """
-    global _GLOBAL_FINE_WORDS_LOWER, _GLOBAL_RETURN_COUNTS, _GLOBAL_ORIG_FINE_WORDS, _GLOBAL_FIELDS
-    global _GLOBAL_MATCH_MODE, _GLOBAL_PUNCT_TRANSLATION, _GLOBAL_FINE_WORDS_SET
-    _GLOBAL_FINE_WORDS_LOWER = fine_words_lower or []
+    global _GLOBAL_LOGICAL_WORDS_LOWER, _GLOBAL_RETURN_COUNTS, _GLOBAL_ORIG_LOGICAL_WORDS, _GLOBAL_FIELDS
+    global _GLOBAL_MATCH_MODE, _GLOBAL_PUNCT_TRANSLATION, _GLOBAL_LOGICAL_WORDS_SET
+    _GLOBAL_LOGICAL_WORDS_LOWER = logical_words_lower or []
     _GLOBAL_RETURN_COUNTS = bool(return_counts)
-    _GLOBAL_ORIG_FINE_WORDS = orig_fine_words or []
+    _GLOBAL_ORIG_LOGICAL_WORDS = orig_logical_words or []
     _GLOBAL_FIELDS = fields or []
     _GLOBAL_MATCH_MODE = match_mode or "substring"
 
@@ -50,10 +50,10 @@ def _init_worker(
             + "，。、；：？！“”‘’（）【】《》…—·"
         )
         _GLOBAL_PUNCT_TRANSLATION = str.maketrans({ch: " " for ch in punct})
-        _GLOBAL_FINE_WORDS_SET = set([w for w in _GLOBAL_FINE_WORDS_LOWER if w])
+        _GLOBAL_LOGICAL_WORDS_SET = set([w for w in _GLOBAL_LOGICAL_WORDS_LOWER if w])
     else:
         _GLOBAL_PUNCT_TRANSLATION = None
-        _GLOBAL_FINE_WORDS_SET = None
+        _GLOBAL_LOGICAL_WORDS_SET = None
 
 
 def _build_text_from_item(item: Dict[str, Any], fields: List[str]) -> str:
@@ -68,33 +68,33 @@ def _build_text_from_item(item: Dict[str, Any], fields: List[str]) -> str:
     return "\n".join(parts) if parts else ""
 
 
-def _count_fine_words(text: str, fine_words_lower: List[str]) -> int:
+def _count_logical_words(text: str, logical_words_lower: List[str]) -> int:
     """
-    Count total occurrences of all fine words in text using pure string matching.
-    Case-insensitive: caller should pass text already lowercased, and fine_words_lower already lowercased.
+    Count total occurrences of all Logical Words in text using pure string matching.
+    Case-insensitive: caller should pass text already lowercased, and logical_words_lower already lowercased.
 
     Note:
       - Uses str.count(...) which counts NON-overlapping occurrences.
       - This intentionally does NOT tokenize/split the text.
     """
-    if not text or not fine_words_lower:
+    if not text or not logical_words_lower:
         return 0
     total = 0
-    for w in fine_words_lower:
+    for w in logical_words_lower:
         if w:
             total += text.count(w)
     return total
 
 
-def _count_fine_words_token_mode(text_lower: str) -> int:
+def _count_logical_words_token_mode(text_lower: str) -> int:
     """
     Token-based counting:
       - lowercased input
       - translate punct -> spaces
       - split on whitespace
-      - exact token match against fine word set
+      - exact token match against Logical Word set
     """
-    if not text_lower or not _GLOBAL_FINE_WORDS_SET:
+    if not text_lower or not _GLOBAL_LOGICAL_WORDS_SET:
         return 0
     if _GLOBAL_PUNCT_TRANSLATION is None:
         tokens = text_lower.split()
@@ -102,7 +102,7 @@ def _count_fine_words_token_mode(text_lower: str) -> int:
         tokens = text_lower.translate(_GLOBAL_PUNCT_TRANSLATION).split()
     total = 0
     for tok in tokens:
-        if tok in _GLOBAL_FINE_WORDS_SET:
+        if tok in _GLOBAL_LOGICAL_WORDS_SET:
             total += 1
     return total
 
@@ -115,7 +115,7 @@ def _process_single_line(line: str) -> Dict[str, Any]:
         Dict with fields:
           - id
           - score (int)
-          - (optional) counts: {fine_word: cnt}
+          - (optional) counts: {logical_word: cnt}
     """
     try:
         item = json.loads(line.strip())
@@ -123,32 +123,32 @@ def _process_single_line(line: str) -> Dict[str, Any]:
         text_lower = text.lower()
 
         if _GLOBAL_MATCH_MODE == "token":
-            score = _count_fine_words_token_mode(text_lower)
+            score = _count_logical_words_token_mode(text_lower)
         else:
-            score = _count_fine_words(text_lower, _GLOBAL_FINE_WORDS_LOWER)
+            score = _count_logical_words(text_lower, _GLOBAL_LOGICAL_WORDS_LOWER)
 
         rec: Dict[str, Any] = {"id": item.get("id", ""), "score": score}
 
-        if _GLOBAL_RETURN_COUNTS and _GLOBAL_FINE_WORDS_LOWER:
+        if _GLOBAL_RETURN_COUNTS and _GLOBAL_LOGICAL_WORDS_LOWER:
             # Keep per-word counts for debugging/analysis (optional; can be large).
-            # Use original words (same length as fine_words_lower) if provided to keep nicer keys.
-            keys = _GLOBAL_ORIG_FINE_WORDS if _GLOBAL_ORIG_FINE_WORDS else _GLOBAL_FINE_WORDS_LOWER
+            # Use original words (same length as logical_words_lower) if provided to keep nicer keys.
+            keys = _GLOBAL_ORIG_LOGICAL_WORDS if _GLOBAL_ORIG_LOGICAL_WORDS else _GLOBAL_LOGICAL_WORDS_LOWER
             counts = {}
             if _GLOBAL_MATCH_MODE == "token":
                 if _GLOBAL_PUNCT_TRANSLATION is None:
                     tokens = text_lower.split()
                 else:
                     tokens = text_lower.translate(_GLOBAL_PUNCT_TRANSLATION).split()
-                # Build token frequency for fine words only (fast path).
+                # Build token frequency for Logical Words only (fast path).
                 freq = {}
                 for tok in tokens:
-                    if tok in _GLOBAL_FINE_WORDS_SET:
+                    if tok in _GLOBAL_LOGICAL_WORDS_SET:
                         freq[tok] = freq.get(tok, 0) + 1
-                for k, w in zip(keys, _GLOBAL_FINE_WORDS_LOWER):
+                for k, w in zip(keys, _GLOBAL_LOGICAL_WORDS_LOWER):
                     if w and w in freq:
                         counts[k] = freq[w]
             else:
-                for k, w in zip(keys, _GLOBAL_FINE_WORDS_LOWER):
+                for k, w in zip(keys, _GLOBAL_LOGICAL_WORDS_LOWER):
                     if w:
                         c = text_lower.count(w)
                         if c:
@@ -167,8 +167,8 @@ def _process_single_line(line: str) -> Dict[str, Any]:
 class LogicalWordCountScorer(BaseScorer):
     """
     LogicalWordCountScorer:
-      1) Define a fine word set/list.
-      2) For each sample, count occurrences of each fine word in (instruction + input + output),
+      1) Define a Logical Word set/list.
+      2) For each sample, count occurrences of each Logical Word in (instruction + input + output),
          case-insensitive.
       3) Sum all counts as the sample score.
       4) Use pure string matching (NOT tokenization).
@@ -182,16 +182,16 @@ class LogicalWordCountScorer(BaseScorer):
         else:
             print(f"Using specified fields: {self.config['fields']}.")
 
-        # Fine words config validation (loaded in _setup)
-        if "fine_words" in self.config and not isinstance(self.config["fine_words"], (list, tuple)):
-            print("Warning: fine_words should be a list/tuple of strings. Ignoring invalid fine_words.")
-            self.config["fine_words"] = []
+        # Logical Words config validation (loaded in _setup)
+        for key in ("logical_words", "fine_words"):
+            if key in self.config and not isinstance(self.config[key], (list, tuple)):
+                print(f"Warning: {key} should be a list/tuple of strings. Ignoring invalid {key}.")
+                self.config[key] = []
 
-        if "fine_words_path" in self.config and self.config["fine_words_path"] is not None and not isinstance(
-            self.config["fine_words_path"], str
-        ):
-            print("Warning: fine_words_path should be a string path. Ignoring invalid fine_words_path.")
-            self.config["fine_words_path"] = None
+        for key in ("logical_words_path", "fine_words_path"):
+            if key in self.config and self.config[key] is not None and not isinstance(self.config[key], str):
+                print(f"Warning: {key} should be a string path. Ignoring invalid {key}.")
+                self.config[key] = None
 
         # Multiprocessing worker count validation
         if "max_workers" in self.config and isinstance(self.config["max_workers"], int) and self.config["max_workers"] > 0:
@@ -217,10 +217,11 @@ class LogicalWordCountScorer(BaseScorer):
             match_mode = "substring"
         self.config["match_mode"] = match_mode
 
-    def _load_fine_words(self) -> List[str]:
+    def _load_logical_words(self) -> List[str]:
         words: List[str] = []
 
-        cfg_words = self.config.get("fine_words", [])
+        # Support both logical_words and fine_words (backward compatibility)
+        cfg_words = self.config.get("logical_words") or self.config.get("fine_words", [])
         if isinstance(cfg_words, (list, tuple)):
             for w in cfg_words:
                 if w is None:
@@ -229,7 +230,8 @@ class LogicalWordCountScorer(BaseScorer):
                 if s:
                     words.append(s)
 
-        path = self.config.get("fine_words_path", None)
+        # Support both logical_words_path and fine_words_path (backward compatibility)
+        path = self.config.get("logical_words_path") or self.config.get("fine_words_path", None)
         if path:
             try:
                 with open(path, "r", encoding="utf-8", errors="ignore") as f:
@@ -239,7 +241,7 @@ class LogicalWordCountScorer(BaseScorer):
                             continue
                         words.append(line)
             except Exception as e:
-                print(f"Warning: failed to read fine_words_path={path}: {e}")
+                print(f"Warning: failed to read logical_words_path={path}: {e}")
 
         # De-duplicate while preserving order
         seen = set()
@@ -251,15 +253,15 @@ class LogicalWordCountScorer(BaseScorer):
         return deduped
 
     def _setup(self):
-        self._fine_words: List[str] = self._load_fine_words()
-        self._fine_words_lower: List[str] = [w.lower() for w in self._fine_words]
+        self._logical_words: List[str] = self._load_logical_words()
+        self._logical_words_lower: List[str] = [w.lower() for w in self._logical_words]
         self._fields: List[str] = self.config.get("fields", ["instruction", "input", "output"])
         self._match_mode: str = self.config.get("match_mode", "substring")
 
-        if not self._fine_words_lower:
-            print("Warning: LogicalWordCountScorer has empty fine_words list; all scores will be 0.")
+        if not self._logical_words_lower:
+            print("Warning: LogicalWordCountScorer has empty logical_words list; all scores will be 0.")
         else:
-            print(f"Setting up LogicalWordCountScorer successfully (fine_words={len(self._fine_words_lower)})")
+            print(f"Setting up LogicalWordCountScorer successfully (logical_words={len(self._logical_words_lower)})")
 
     def score_item(self, data_item: Dict) -> float:
         text = _build_text_from_item(data_item, self._fields)
@@ -272,9 +274,9 @@ class LogicalWordCountScorer(BaseScorer):
             )
             trans = str.maketrans({ch: " " for ch in punct})
             tokens = text_lower.translate(trans).split()
-            fine_set = set([w for w in self._fine_words_lower if w])
-            return float(sum(1 for tok in tokens if tok in fine_set))
-        return float(_count_fine_words(text_lower, self._fine_words_lower))
+            logical_set = set([w for w in self._logical_words_lower if w])
+            return float(sum(1 for tok in tokens if tok in logical_set))
+        return float(_count_logical_words(text_lower, self._logical_words_lower))
 
     def evaluate(self, dataset) -> List[Dict]:
         num_lines = get_total_lines(dataset)
@@ -291,7 +293,7 @@ class LogicalWordCountScorer(BaseScorer):
         with ProcessPoolExecutor(
             max_workers=max_workers,
             initializer=_init_worker,
-            initargs=(self._fine_words_lower, return_counts, self._fine_words, fields, match_mode),
+            initargs=(self._logical_words_lower, return_counts, self._logical_words, fields, match_mode),
         ) as executor:
             results = list(
                 tqdm(
@@ -340,7 +342,7 @@ class LogicalWordCountScorer(BaseScorer):
         with ProcessPoolExecutor(
             max_workers=max_workers,
             initializer=_init_worker,
-            initargs=(self._fine_words_lower, return_counts, self._fine_words, fields, match_mode),
+            initargs=(self._logical_words_lower, return_counts, self._logical_words, fields, match_mode),
         ) as executor:
             with open(dataset, "r", encoding="utf-8", errors="ignore") as f:
                 for line in f:
