@@ -1,4 +1,4 @@
-# OpenDataArena 数据评分工具
+# ODA-DataScorer - OpenDataArena 数据评分工具
 
 <p align="center">
   <a href="./README.md">English</a> | 简体中文
@@ -6,7 +6,9 @@
 
 ## Introduction
 
-[OpenDataArena-Tool](https://github.com/OpenDataArena/OpenDataArena-Tool) 中的数据评分工具通过一系列自动化、多方面的评分和处理方法，为 [OpenDataArena](https://opendataarena.github.io/) 提供了多维度的评估。
+**ODA-DataScorer** 是一个数据评分工具包，通过基于模型、LLM-as-a-Judge 和启发式等多种方法，为 [OpenDataArena](https://opendataarena.github.io/) 的后训练数据集提供多维度评估。
+
+仓库地址：[https://github.com/OpenDataArena/ODA-DataScorer](https://github.com/OpenDataArena/ODA-DataScorer)
 
 ## Wiki 文档
 
@@ -14,7 +16,7 @@
 
 ## 核心模块
 
-本项目集成了各种先进的数据处理和评分技术，主要包括以下三个核心模块：
+ODA-DataScorer 集成了各种先进的数据处理和评分技术，主要包括以下三个核心模块：
 
 * 📊 **基于模型的评分器**: 利用模型的内部信号评估数据。本框架集成了 40 种基于模型的评分器，涵盖质量、复杂度、梯度分析等多个维度：
   * **质量类**: SkyworkLlamaScorer, SkyworkQwenScorer, AtheneScorer, RMDeBERTaScorer, Gpt2HarmlessScorer, Gpt2HelpfulScorer, InfOrmScorer, DeitaQScorer, DebertaScorer, FinewebEduScorer, TextbookScorer, QuRateScorer, CleanlinessScorer, ProfessionalismScorer, ReadabilityScorer, ReasoningScorer, UniEvalD2tScorer, UniEvalDialogScorer, UniEvalFactScorer, UniEvalSumScorer
@@ -47,8 +49,8 @@
 ```bash
 conda create -n oda python=3.10 -y
 conda activate oda
-git clone https://github.com/OpenDataArena/OpenDataArena-Tool.git
-cd OpenDataArena-Tool/data_scorer
+git clone https://github.com/OpenDataArena/ODA-DataScorer.git
+cd ODA-DataScorer
 pip install -r requirements.txt
 pip install flash_attn==2.7.4.post1 --no-build-isolation
 # if you want to calculate fail rate, run the following command, which will install the lighteval package
@@ -79,5 +81,5 @@ pip install -e .[dev]
 
 ### 运行数据评分脚本
 
-本项目采用模块化结构，每个核心模块作为独立的子目录。有关运行特定评分器的详细说明，**请参考相应子目录中的 `README.md` 文件。**
+ODA-DataScorer 采用模块化结构，每个核心模块作为独立的子目录。有关运行特定评分器的详细说明，**请参考相应子目录中的 `README.md` 文件。**
 

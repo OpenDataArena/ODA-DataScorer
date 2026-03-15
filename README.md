@@ -1,4 +1,4 @@
-# OpenDataArena Data Scoring Toolkit
+# ODA-DataScorer - OpenDataArena Data Scoring Toolkit
 
 <p align="center">
   English | <a href="./README_zh-CN.md">简体中文</a>
@@ -6,7 +6,7 @@
 
 ## Introduction
 
-The data scorer of [OpenDataArena-Tool](https://github.com/OpenDataArena/OpenDataArena-Tool) for [OpenDataArena](https://opendataarena.github.io/) offers multi-dimensional score assessments for datasets through a series of automated, multi-faceted scoring and processing methods.
+**ODA-DataScorer** is a toolkit for multi-dimensional score assessments of post-training datasets for [OpenDataArena](https://opendataarena.github.io/), offering a series of automated, multi-faceted scoring and processing methods via model-based, LLM-as-judge, and heuristic approaches.
 
 ## Wiki Documentation
 
@@ -14,7 +14,7 @@ More details about the data scoring can be found in [OpenDataArena-Tool Data Sco
 
 ## Core Modules
 
-This project integrates various advanced data processing and scoring technologies, primarily including the following three core modules:
+ODA-DataScorer integrates various advanced data processing and scoring technologies, primarily including the following three core modules:
 
 * 📊 **Model-based Scorer**: leveraging internal model signals to assess data. This framework integrates 40 model-based scorers, covering multiple dimensions including quality, complexity, gradient analysis, and more:
   * **Quality**: SkyworkLlamaScorer, SkyworkQwenScorer, AtheneScorer, RMDeBERTaScorer, Gpt2HarmlessScorer, Gpt2HelpfulScorer, InfOrmScorer, DeitaQScorer, DebertaScorer, FinewebEduScorer, TextbookScorer, QuRateScorer, CleanlinessScorer, ProfessionalismScorer, ReadabilityScorer, ReasoningScorer, UniEvalD2tScorer, UniEvalDialogScorer, UniEvalFactScorer, UniEvalSumScorer
@@ -47,12 +47,12 @@ This project integrates various advanced data processing and scoring technologie
 ```bash
 conda create -n oda python=3.10 -y
 conda activate oda
-git clone https://github.com/OpenDataArena/OpenDataArena-Tool.git
-cd OpenDataArena-Tool/data_scorer
+git clone https://github.com/OpenDataArena/ODA-DataScorer.git
+cd ODA-DataScorer
 pip install -r requirements.txt
 pip install flash_attn==2.7.4.post1 --no-build-isolation
 # if you want to calculate fail rate, run the following command, which will install the lighteval package
-cd model_based/fail_rate
+cd model_based/scorers/fail_rate
 pip install -e .[dev]
 ```
 
@@ -79,4 +79,4 @@ Your original input data should primarily consist of two keys: `instruction` and
 
 ### Running Data Scoring Scripts
 
-This project adopts a modular structure, with each core module serving as an independent subdirectory. For detailed instructions on running specific scorers, **please refer to the `README.md` file within the corresponding subdirectory.**
+ODA-DataScorer adopts a modular structure, with each core module serving as an independent subdirectory. For detailed instructions on running specific scorers, **please refer to the `README.md` file within the corresponding subdirectory.**
