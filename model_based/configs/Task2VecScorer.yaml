@@ -6,5 +6,5 @@ scorers:
 - name: Task2VecScorer
   model: openai-community/gpt2
   max_length: 512
-  num_gpu_per_job: 4
+  num_gpu_per_job: 1
   last_layer_only: true

@@ -4,7 +4,7 @@ num_gpu: 4
 num_gpu_per_job: 1
 scorers:
 - name: TextbookScorer
-  model: llm-data-textbook-quality-fasttext-classifier-v2
+  model: kenhktsui/llm-data-textbook-quality-fasttext-classifier-v2
   max_length: 512
   batch_size: 8
   num_gpu_per_job: 1

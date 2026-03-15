@@ -25,7 +25,6 @@ python main.py --config configs/KNNScorer.yaml
 # LogDetDistanceScorer
 python main.py --config configs/LogDetDistanceScorer.yaml
 
-
 # MtldScorer
 python main.py --config configs/MtldScorer.yaml
 
@@ -36,37 +35,46 @@ python main.py --config configs/NovelSumScorer.yaml
 python main.py --config configs/PartitionEntropyScorer.yaml
 
 # PureThinkScorer
-python main.py --config configs/PureThinkScorer.yaml
+python main.py --config configs/PureThinkScorer.yaml&
 
 # RadiusScorer
-python main.py --config configs/RadiusScorer.yaml
+python main.py --config configs/RadiusScorer.yaml&
 
 # StrLengthScorer
-python main.py --config configs/StrLengthScorer.yaml
+python main.py --config configs/StrLengthScorer.yaml&
 
 # ThinkOrNotScorer
-python main.py --config configs/ThinkOrNotScorer.yaml
+python main.py --config configs/ThinkOrNotScorer.yaml&
 
 # TokenEntropyScorer
-python main.py --config configs/TokenEntropyScorer.yaml
+python main.py --config configs/TokenEntropyScorer.yaml&
 
 # TokenLengthScorer
-python main.py --config configs/TokenLengthScorer.yaml
+python main.py --config configs/TokenLengthScorer.yaml&
 
 # TreeInstructScorer
-python main.py --config configs/TreeInstructScorer.yaml
+python main.py --config configs/TreeInstructScorer.yaml&
 
 # TsPythonScorer
-python main.py --config configs/TsPythonScorer.yaml
+python main.py --config configs/TsPythonScorer.yaml&
 
 # UniqueNgramScorer
-python main.py --config configs/UniqueNgramScorer.yaml
+python main.py --config configs/UniqueNgramScorer.yaml&
 
 # UniqueNtokenScorer
-python main.py --config configs/UniqueNtokenScorer.yaml
+python main.py --config configs/UniqueNtokenScorer.yaml&
 
 # VendiScorer
-python main.py --config configs/VendiScorer.yaml
+python main.py --config configs/VendiScorer.yaml&
 
 # VocdDScorer
-python main.py --config configs/VocdDScorer.yaml
+python main.py --config configs/VocdDScorer.yaml&
+
+# CompressRatioScorer
+python main.py --config configs/CompressRatioScorer.yaml&
+
+# LogicalWordCountScorer
+python main.py --config configs/LogicalWordCountScorer.yaml&
+
+# MultiScorer
+srun -p raise --quotatype=spot -w SH-IDC1-10-140-37-124 --gres=gpu:0  python main.py --config configs/MultiScorer.yaml&

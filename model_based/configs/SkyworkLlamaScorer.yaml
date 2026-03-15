@@ -1,0 +1,11 @@
+input_path: ../data_process/example_input.jsonl
+output_path: results/SkyworkLlamaScorer/
+num_gpu: 4
+num_gpu_per_job: 1
+resume: true
+scorers:
+- name: SkyworkLlamaScorer
+  model: Skywork/Skywork-Reward-V2-Llama-3.1-8B-40M
+  batch_size: 8
+  max_length: 1024
+  num_gpu_per_job: 1

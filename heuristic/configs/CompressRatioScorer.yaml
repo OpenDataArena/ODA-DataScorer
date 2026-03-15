@@ -1,0 +1,16 @@
+input_path: ../data_process/example_input.jsonl
+output_path: results/CompressRatioScorer/
+num_gpu: 0
+num_gpu_per_job: 0
+resume: true
+scorers:
+- name: CompressRatioScorer
+  fields:
+  - instruction
+  - input
+  - output
+  level: 9 # zlib compression level: 0~9 (default 9)
+  max_workers: 16
+- name: PureThinkScorer
+  field: output
+  max_workers: 128

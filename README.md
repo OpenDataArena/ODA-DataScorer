@@ -16,10 +16,10 @@ More details about the data scoring can be found in [OpenDataArena-Tool Data Sco
 
 This project integrates various advanced data processing and scoring technologies, primarily including the following three core modules:
 
-* 📊 **Model-based Scorer**: leveraging internal model signals to assess data. This framework integrates nearly 40 model-based scorers, covering multiple dimensions including quality, complexity, gradient analysis, and more:
-  * **Quality**: SkyworkRewardScorer, AtheneScorer, RMDeBERTaScorer, Gpt2HarmlessScorer, Gpt2HelpfulScorer, InfOrmScorer, DeitaQScorer, DebertaScorer, FinewebEduScorer, TextbookScorer, QuRateScorer, CleanlinessScorer, ProfessionalismScorer, ReadabilityScorer, ReasoningScorer, UniEvalD2tScorer, UniEvalDialogScorer, UniEvalFactScorer, UniEvalSumScorer
-  * **Complexity**: DeitaCScorer, IFDScorer, ThinkingProbScorer, PPLScorer, NormLossScorer, UPDScorer
-  * **Others**: GraNdScorer, NuclearNormScorer, EffectiveRankScorer, Task2VecScorer, MIWVScorer, SelectitTokenScorer, SelectitSentenceScorer, SelectitModelScorer, HESScorer, AnswerProbScorer, AskLlmScorer, FailRateScorer, InstagScorer
+* 📊 **Model-based Scorer**: leveraging internal model signals to assess data. This framework integrates 40 model-based scorers, covering multiple dimensions including quality, complexity, gradient analysis, and more:
+  * **Quality**: SkyworkLlamaScorer, SkyworkQwenScorer, AtheneScorer, RMDeBERTaScorer, Gpt2HarmlessScorer, Gpt2HelpfulScorer, InfOrmScorer, DeitaQScorer, DebertaScorer, FinewebEduScorer, TextbookScorer, QuRateScorer, CleanlinessScorer, ProfessionalismScorer, ReadabilityScorer, ReasoningScorer, UniEvalD2tScorer, UniEvalDialogScorer, UniEvalFactScorer, UniEvalSumScorer
+  * **Complexity**: DeitaCScorer, IFDScorer, ThinkingProbScorer, PPLScorer, NormLossScorer, UPDScorer, ComplexityScorer
+  * **Others**: GraNdScorer, NuclearNormScorer, EffectiveRankScorer, Task2VecScorer, MIWVScorer, SelectitTokenScorer, SelectitSentenceScorer, SelectitModelScorer, HESScorer, EmbedSVDEntropyScorer, AskLlmScorer, FailRateScorer, InstagScorer
 
 * ⚖️ **LLM-as-a-Judge Scorer**: leveraging powerful LLMs as "judges" to simulate human judgment in scoring the data.  
   In this framework, commonly used dimensions include Q, A, and QA:
@@ -37,9 +37,9 @@ This project integrates various advanced data processing and scoring technologie
   * Correctness (Q & QA): Content correctness
   * Meaningfulness (Q & QA): Meaningfulness/Value
 
-* 🧠 **Heuristic Scorer**: using heuristic methods to score the data. This framework integrates 23 heuristic scorers, covering multiple dimensions including diversity, statistical features, content detection, and more:
+* 🧠 **Heuristic Scorer**: using heuristic methods to score the data. This framework integrates 25 heuristic scorers, covering multiple dimensions including diversity, statistical features, content detection, and more:
   * **Diversity**: VendiScorer, KNNScorer, ApsScorer, ApjsScorer, RadiusScorer, ClusterInertiaScorer, PartitionEntropyScorer, NovelSumScorer, FacilityLocationScorer, UniqueNgramScorer, UniqueNtokenScorer, MtldScorer, VocdDScorer, TokenEntropyScorer, GramEntropyScorer, HddScorer
-  * **Statistical Features**: TokenLengthScorer, StrLengthScorer, TreeInstructScorer, LogDetDistanceScorer
+  * **Statistical Features**: TokenLengthScorer, StrLengthScorer, LogicalWordCountScorer, CompressRatioScorer, TreeInstructScorer, LogDetDistanceScorer
   * **Content Detection**: ThinkOrNotScorer, PureThinkScorer, TsPythonScorer
 
 ## Installation

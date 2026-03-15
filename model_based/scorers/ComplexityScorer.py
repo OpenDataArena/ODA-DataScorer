@@ -50,7 +50,7 @@ Your output:
 <bor>{{reason}}</eor>"""
 
 
-class ComplexityHFScorer(BaseScorer):
+class ComplexityScorer(BaseScorer):
     """
     Instruction complexity scorer using HuggingFace transformers (no vLLM).
 
@@ -132,7 +132,7 @@ class ComplexityHFScorer(BaseScorer):
             )
         except Exception as e:
             raise RuntimeError(
-                f"Failed to set up ComplexityHFScorer with model={self.config['model']}: {e}"
+                f"Failed to set up ComplexityScorer with model={self.config['model']}: {e}"
             )
 
         if self.tokenizer.pad_token is None:
@@ -144,7 +144,7 @@ class ComplexityHFScorer(BaseScorer):
         self.model.eval()
 
         self._printed_first_prompt = False
-        print(f"Setting up ComplexityHFScorer successfully on {self.device} (dtype={load_dtype})")
+        print(f"Setting up ComplexityScorer successfully on {self.device} (dtype={load_dtype})")
 
     def _build_prompt(self, item: Dict[str, Any]) -> str:
         instruction = item.get("instruction", "")
@@ -218,7 +218,7 @@ class ComplexityHFScorer(BaseScorer):
                 self._printed_first_prompt = True
                 try:
                     print("\n" + "=" * 80)
-                    print("[ComplexityHFScorer] First-sample debug: final prompt")
+                    print("[ComplexityScorer] First-sample debug: final prompt")
                     print("-" * 80)
                     print(final_prompt)
                     print("=" * 80 + "\n")
@@ -283,7 +283,7 @@ class ComplexityHFScorer(BaseScorer):
         buf_ids: List[Any] = []
 
         with open(dataset, "r", encoding="utf-8", errors="ignore") as f:
-            pbar = tqdm(total=num_lines, desc=self.config.get("name", "ComplexityHFScorer"))
+            pbar = tqdm(total=num_lines, desc=self.config.get("name", "ComplexityScorer"))
             for line in f:
                 line = line.strip()
                 if not line:
@@ -322,7 +322,7 @@ class ComplexityHFScorer(BaseScorer):
             done_ids = load_jsonl_id_set(output_file, id_key="id")
             if done_ids:
                 print(
-                    f"[ComplexityHFScorer] Resume enabled. Found {len(done_ids)} "
+                    f"[ComplexityScorer] Resume enabled. Found {len(done_ids)} "
                     f"unique completed ids in {output_file}."
                 )
 
@@ -335,7 +335,7 @@ class ComplexityHFScorer(BaseScorer):
         buf_ids: List[Any] = []
 
         with open(dataset, "r", encoding="utf-8", errors="ignore") as f:
-            pbar = tqdm(total=num_lines, desc=self.config.get("name", "ComplexityHFScorer"))
+            pbar = tqdm(total=num_lines, desc=self.config.get("name", "ComplexityScorer"))
 
             for line in f:
                 line = line.strip()

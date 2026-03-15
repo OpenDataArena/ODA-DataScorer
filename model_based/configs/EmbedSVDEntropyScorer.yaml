@@ -1,0 +1,22 @@
+input_path: ../data_process/example_input.jsonl
+output_path: results/EmbedSVDEntropyScorer/
+num_gpu: 4
+num_gpu_per_job: 1
+scorers:
+- name: EmbedSVDEntropyScorer
+  model: Qwen/Qwen3-Embedding-8B
+  max_length: 40900
+  batch_size: 1
+  # When seq_len > svd_max_tokens, choose how to select tokens for SVD:
+  # - tail: keep last svd_max_tokens tokens (recommended for causal embedding models)
+  # - uniform: uniformly sample svd_max_tokens tokens across the sequence
+  svd_max_tokens: 40900
+  svd_token_strategy: tail
+  fields:
+  - instruction
+  - input
+  - output
+  padding_side: right
+
+
+  

@@ -14,6 +14,7 @@ This framework provides a complete data quality evaluation system that performs 
 - **🔧 Configuration-Driven**: Easily manage models, evaluation metrics, and runtime parameters through YAML configuration files
 - **💾 Structured Output**: Automatically merges and categorizes scoring results with support for viewing intermediate results
 - **🔄 Parallel Execution**: Multiple scorers execute sequentially, with each scorer using data parallelism for acceleration
+- **⏸️ Resume from Checkpoint**: Supports resuming interrupted evaluation tasks from where they left off, avoiding redundant computation
 
 ## 📦 Supported Scorers
 
@@ -23,7 +24,8 @@ This framework integrates nearly 40 model-based scorers covering quality, comple
 
 Evaluate data quality, accuracy, readability, and related dimensions:
 
-- **SkyworkRewardScorer**: Skywork reward model scoring
+- **SkyworkLlamaScorer**: Skywork Llama reward model scoring
+- **SkyworkQwenScorer**: Skywork Qwen reward model scoring
 - **AtheneScorer**: Athene reward model scoring  
 - **RMDeBERTaScorer**: DeBERTa reward model scoring
 - **Gpt2HarmlessScorer**: GPT-2 harmlessness reward model
@@ -48,6 +50,7 @@ Evaluate data quality, accuracy, readability, and related dimensions:
 Evaluate data difficulty, complexity, perplexity, and related dimensions:
 
 - **DeitaCScorer**: Deita complexity scoring
+- **ComplexityScorer**: Uses a local LLM (non-API) as Judge to score instruction complexity
 - **IFDScorer**: Instruction Following Difficulty scoring
 - **ThinkingProbScorer**: Thinking probability scoring
 - **PPLScorer**: Perplexity scoring
@@ -61,13 +64,13 @@ Including gradient analysis, data selection, specific tasks, etc.:
 - **GraNdScorer**: Gradient norm difference scoring
 - **NuclearNormScorer**: Nuclear norm scoring
 - **EffectiveRankScorer**: Effective rank scoring
+- **EmbedSVDEntropyScorer**: Embedding SVD entropy scoring
 - **Task2VecScorer**: Task2Vec embedding scoring
 - **MIWVScorer**: Maximum Influence Weighted Value scoring
 - **SelectitTokenScorer**: SelectIT token-level scoring
 - **SelectitSentenceScorer**: SelectIT sentence-level scoring
 - **SelectitModelScorer**: SelectIT model ensemble scoring
 - **HESScorer**: High Entropy Sample scoring
-- **AnswerProbScorer**: Answer probability scoring
 - **AskLlmScorer**: LLM-based quality inquiry
 - **FailRateScorer**: Failure rate evaluation
 - **InstagScorer**: Instruction tag classification
@@ -116,6 +119,7 @@ scorers:
 - **`output_path`**: Output results directory
 - **`num_gpu`**: Total number of globally available GPUs (required)
 - **`num_gpu_per_job`**: Global default GPUs per task (optional, default 1)
+- **`resume`**: Whether to enable resume from checkpoint (optional, default false); see "Resume from Checkpoint" below
 - **`scorers`**: List of scorers, each can specify its own `num_gpu_per_job` to override the global setting
 
 ### 2. Prepare Data
@@ -131,16 +135,39 @@ Ensure input data is in JSONL format, with one JSON object per line:
 - `instruction`: Question or instruction (required)
 - `output`: Answer or output (required for QA-type scorers)
 - `input`: Additional input field (optional)
+- `id`: Unique identifier for each data item (**required when using resume from checkpoint**, for distinguishing and recovering each record)
 - Other fields: Some scorers may require additional specific fields; please refer to the corresponding scorer documentation
 
 ### 3. Run Evaluation
 
 ```bash
-python main_para.py --config configs/my_scorer.yaml
+python main.py --config configs/my_scorer.yaml
 ```
 
 **Parameter Description**:
 - `--config`: Path to YAML configuration file
+
+### 4. Resume from Checkpoint
+
+When an evaluation task is interrupted (e.g., OOM, machine failure) before completion, you can use the resume feature to continue from where it left off, avoiding redundant computation of already completed work.
+
+**How to use**: Add `resume: true` to your configuration YAML:
+
+```yaml
+input_path: /path/to/your/data.jsonl
+output_path: results/my_experiment
+num_gpu: 8
+resume: true                    # Enable resume from checkpoint
+
+scorers:
+  - name: DeitaQScorer
+    model: /path/to/deita-quality-scorer
+    batch_size: 8
+```
+
+**Important notes**:
+- When using resume, **each record in the input data must contain an `id` field** to uniquely identify data and correctly restore progress
+- The framework checks existing intermediate results under `output_path`, skips completed scorers or data shards, and only continues processing the unfinished parts
 
 ## 🔧 Data Parallelism Mechanism
 

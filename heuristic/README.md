@@ -17,7 +17,7 @@ This framework provides a complete data quality evaluation system that performs 
 
 ## 📦 Supported Scorers
 
-This framework integrates **23 heuristic scorers** covering diversity, statistical features, content detection, and more:
+This framework integrates **25 heuristic scorers** covering diversity, statistical features, content detection, and more:
 
 ### 📈 Diversity
 
@@ -48,6 +48,8 @@ Evaluate basic statistical features of data:
 - **StrLengthScorer**: String length statistics
 - **TreeInstructScorer**: Syntax tree statistics
 - **LogDetDistanceScorer**: Log-determinant distance scoring
+- **LogicalWordCountScorer**: Logical word count
+- **CompressRatioScorer**: Compression ratio scoring
 
 ### 🔍 Content Detection
 
@@ -100,6 +102,7 @@ scorers:
 - **`num_gpu`**: Total number of globally available GPUs (optional, default 0, heuristic scoring typically doesn't require GPU)
 - **`num_gpu_per_job`**: Global default GPUs per task (optional, default 0, heuristic scoring typically doesn't require GPU)
 - **`scorers`**: List of scorers, each can specify `max_workers` to control parallelism
+- **`resume`**: Whether to enable resume from checkpoint (optional, default false). When enabled, the program skips already completed samples and continues from where it left off. **Note: When using this feature, each record in the input data must contain an `id` field for unique identification**
 
 ### 2. Prepare Data
 
@@ -114,16 +117,45 @@ Ensure input data is in JSONL format, with one JSON object per line:
 - `instruction`: Question or instruction (required)
 - `output`: Answer or output (required for QA-type scorers)
 - `input`: Additional input field (optional)
+- `id`: Unique identifier for each record (**required when using resume feature**, used to identify and skip already completed samples)
 - Other fields: Some scorers may require additional specific fields; please refer to the corresponding scorer documentation
 
 ### 3. Run Evaluation
 
 ```bash
-python main_para.py --config configs/my_scorer.yaml
+python main.py --config configs/my_scorer.yaml
 ```
 
 **Parameter Description**:
 - `--config`: Path to YAML configuration file
+
+### 4. Resume from Checkpoint
+
+When evaluating large-scale datasets, if the program is interrupted midway, you can use the **resume from checkpoint** feature to continue from where it left off, avoiding redundant computation.
+
+**How to use**: Add `resume: true` to your configuration YAML file:
+
+```yaml
+input_path: /path/to/your/data.jsonl
+output_path: results/my_experiment
+resume: true   # Enable resume from checkpoint
+
+scorers:
+  - name: TokenLengthScorer
+    encoder: o200k_base
+    fields: ["instruction", "input", "output"]
+```
+
+**Important notes**:
+- When using resume, **each record in the input data must contain an `id` field** to uniquely identify each sample, so the program can correctly skip already completed samples
+- If the `id` field is missing from the data, the program cannot correctly identify scored samples, which may lead to redundant computation or incorrect results
+
+**Data format example** (with id required):
+
+```json
+{"id": "sample_001", "instruction": "What is ML?", "output": "Machine learning is..."}
+{"id": "sample_002", "instruction": "Explain NN", "output": "Neural networks are..."}
+```
 
 ## 🔧 CPU Parallelism Mechanism
 

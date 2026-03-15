@@ -1,0 +1,24 @@
+input_path: ../data_process/example_input.jsonl
+output_path: results/ComplexityScorer/
+num_gpu: 4
+num_gpu_per_job: 1
+resume: true
+
+scorers:
+- name: ComplexityScorer
+
+  model: Qwen/Qwen3-8B
+
+  # transformers generation params
+  batch_size: 1
+  max_length: 30000
+  max_new_tokens: 64
+  temperature: 0.6
+  top_p: 0.95
+  top_k: null
+  min_p: null
+  enable_thinking: false
+
+  # score range
+  min_score: 1
+  max_score: 10

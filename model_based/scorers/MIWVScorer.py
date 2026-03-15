@@ -536,13 +536,10 @@ class MIWVScorer(BaseScorer):
                     nid = normalize_id(bid)
                     if nid:
                         done_ids.add(nid)
-                pbar.update(len(buffer_items))
                 buffer_items.clear()
                 buffer_indices.clear()
                 buffer_ids.clear()
-
-            else:
-                pbar.update(1)
+            pbar.update(1)
 
         if buffer_items:
             miwv_scores, _ = self.score_batch(buffer_items, buffer_indices, all_data)
@@ -561,7 +558,6 @@ class MIWVScorer(BaseScorer):
                 nid = normalize_id(bid)
                 if nid:
                     done_ids.add(nid)
-            pbar.update(len(buffer_items))
             buffer_items.clear()
             buffer_indices.clear()
             buffer_ids.clear()

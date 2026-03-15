@@ -153,8 +153,12 @@
             "module": "scorers.SkyworkQwenScorer"
         },
         {
-            "name": "ComplexityHFScorer",
-            "module": "scorers.ComplexityHFScorer"
+            "name": "ComplexityScorer",
+            "module": "scorers.ComplexityScorer"
+        },
+        {
+            "name": "EmbedSVDEntropyScorer",
+            "module": "scorers.EmbedSVDEntropyScorer"
         }
     ]
 }

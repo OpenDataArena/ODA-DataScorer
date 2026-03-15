@@ -9,4 +9,4 @@ scorers:
   max_length: 8192
   distance_metric: cosine
   model: Qwen/Qwen3-8B
-  num_gpu_per_job: 4
+  num_gpu_per_job: 1

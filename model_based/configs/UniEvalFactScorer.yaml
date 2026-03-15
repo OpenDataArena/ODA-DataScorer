@@ -1,4 +1,4 @@
-input_path: ../data_process/example_input.jsonl
+input_path: ../data_process/example_input_UniEvalFactScorer.jsonl
 output_path: results/UniEvalFactScorer/
 num_gpu: 4
 num_gpu_per_job: 1
@@ -6,6 +6,6 @@ scorers:
 - name: UniEvalFactScorer
   model: MingZhong/unieval-fact
   max_length: 1024
-  batch_size: 8
+  batch_size: 4
   overall: true
   num_gpu_per_job: 1

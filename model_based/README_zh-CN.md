@@ -14,6 +14,7 @@
 - **🔧 配置驱动**: 通过 YAML 配置文件轻松管理模型、评估指标和运行参数
 - **💾 结构化输出**: 自动合并并分类保存评分结果，支持中间结果查看
 - **🔄 并行执行**: 多个评分器按顺序执行，每个评分器内部使用数据并行加速
+- **⏸️ 断点续打**: 支持从中断处恢复评估任务，避免重复计算
 
 ## 📦 支持的评分器
 
@@ -23,7 +24,8 @@
 
 评估数据的质量、准确性、可读性等维度：
 
-- **SkyworkRewardScorer**: Skywork 奖励模型评分
+- **SkyworkLlamaScorer**: Skywork Llama 奖励模型评分
+- **SkyworkQwenScorer**: Skywork Qwen 奖励模型评分
 - **AtheneScorer**: Athene 奖励模型评分  
 - **RMDeBERTaScorer**: DeBERTa 奖励模型评分
 - **Gpt2HarmlessScorer**: GPT-2 无害性奖励模型
@@ -48,6 +50,7 @@
 评估数据的难度、复杂度、困惑度等维度：
 
 - **DeitaCScorer**: Deita 复杂度评分
+- **ComplexityScorer**: 使用本地 LLM（非 API 形式）作为 Judge，对数据指令进行复杂度打分
 - **IFDScorer**: 指令遵循难度评分
 - **ThinkingProbScorer**: 思考概率评分
 - **PPLScorer**: 困惑度评分
@@ -61,13 +64,13 @@
 - **GraNdScorer**: 梯度范数差异评分
 - **NuclearNormScorer**: 核范数评分
 - **EffectiveRankScorer**: 有效秩评分
+- **EmbedSVDEntropyScorer**: 嵌入 SVD 熵评分
 - **Task2VecScorer**: Task2Vec 嵌入评分
 - **MIWVScorer**: 最大权重变化值评分
 - **SelectitTokenScorer**: SelectIT Token 级别评分
 - **SelectitSentenceScorer**: SelectIT 句子级别评分
 - **SelectitModelScorer**: SelectIT 模型集成评分
 - **HESScorer**: 高熵样本评分
-- **AnswerProbScorer**: 答案概率评分
 - **AskLlmScorer**: 基于 LLM 的质量询问
 - **FailRateScorer**: 失败率评估
 - **InstagScorer**: 指令标签分类
@@ -116,6 +119,7 @@ scorers:
 - **`output_path`**: 输出结果目录
 - **`num_gpu`**: 全局可用 GPU 总数（必需）
 - **`num_gpu_per_job`**: 全局默认的每任务 GPU 数量（可选，默认 1）
+- **`resume`**: 是否启用断点续打（可选，默认 false），详见下方「断点续打」说明
 - **`scorers`**: 评分器列表，每个评分器可指定自己的 `num_gpu_per_job` 覆盖全局设置
 
 ### 2. 准备数据
@@ -131,16 +135,39 @@ scorers:
 - `instruction`: 问题或指令（必需）
 - `output`: 回答或输出（对于 QA 类评分器必需）
 - `input`: 额外的输入字段（可选）
+- `id`: 数据唯一标识（**使用断点续打功能时必需**，用于区分和恢复每条数据）
 - 其他字段: 某些评分器可能还要求其它特定字段，具体请参考对应评分器的说明或配置文档
 
 ### 3. 运行评估
 
 ```bash
-python main_para.py --config configs/my_scorer.yaml
+python main.py --config configs/my_scorer.yaml
 ```
 
 **参数说明**:
 - `--config`: YAML 配置文件路径
+
+### 4. 断点续打
+
+当评估任务因中断（如 OOM、机器故障等）未完成时，可使用断点续打功能从中断处继续，避免重复计算已完成的部分。
+
+**使用方法**：在配置 YAML 中增加 `resume: true`：
+
+```yaml
+input_path: /path/to/your/data.jsonl
+output_path: results/my_experiment
+num_gpu: 8
+resume: true                    # 启用断点续打
+
+scorers:
+  - name: DeitaQScorer
+    model: /path/to/deita-quality-scorer
+    batch_size: 8
+```
+
+**重要说明**：
+- 使用断点续打时，**输入数据中的每条记录必须包含 `id` 字段**，用于唯一标识数据并正确恢复进度
+- 框架会检查 `output_path` 下已有的中间结果，跳过已完成的评分器或已完成的数据分片，仅对未完成部分继续计算
 
 ## 🔧 数据并行机制
 
@@ -232,6 +259,12 @@ master_temp/
     └── PPLScorer.jsonl
 ```
 
+### 后处理（可选）
+
+- `pointwise_scores.jsonl` 已包含 `id` 和 `scores`，可直接用于下游分析。
+- 如需将评分合并回原始数据文件（保留 `instruction`、`output` 等字段），可编写脚本按 `id` 匹配合并。
+- 若同时使用 [llm_as_judge](../llm_as_judge/README_zh-CN.md) 模块，可参考其 `tools/process_scores.py` 的实现思路进行分数合并。
+
 ## 📝 评分器配置详解
 
 ### 通用参数
@@ -281,7 +314,7 @@ scorers:
 ```yaml
 num_gpu: 8
 scorers:
-  - name: SkyworkRewardScorer      # 质量
+  - name: SkyworkLlamaScorer       # 质量
   - name: IFDScorer                # 难度
   - name: PPLScorer                # 困惑度
   - name: UPDScorer                # 不确定性难度

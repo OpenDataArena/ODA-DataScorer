@@ -16,10 +16,10 @@
 
 本项目集成了各种先进的数据处理和评分技术，主要包括以下三个核心模块：
 
-* 📊 **基于模型的评分器**: 利用模型的内部信号评估数据。本框架集成了近 40 种基于模型的评分器，涵盖质量、复杂度、梯度分析等多个维度：
-  * **质量类**: SkyworkRewardScorer, AtheneScorer, RMDeBERTaScorer, Gpt2HarmlessScorer, Gpt2HelpfulScorer, InfOrmScorer, DeitaQScorer, DebertaScorer, FinewebEduScorer, TextbookScorer, QuRateScorer, CleanlinessScorer, ProfessionalismScorer, ReadabilityScorer, ReasoningScorer, UniEvalD2tScorer, UniEvalDialogScorer, UniEvalFactScorer, UniEvalSumScorer
-  * **复杂度类**: DeitaCScorer, IFDScorer, ThinkingProbScorer, PPLScorer, NormLossScorer, UPDScorer
-  * **其他类**: GraNdScorer, NuclearNormScorer, EffectiveRankScorer, Task2VecScorer, MIWVScorer, SelectitTokenScorer, SelectitSentenceScorer, SelectitModelScorer, HESScorer, AnswerProbScorer, AskLlmScorer, FailRateScorer, InstagScorer
+* 📊 **基于模型的评分器**: 利用模型的内部信号评估数据。本框架集成了 40 种基于模型的评分器，涵盖质量、复杂度、梯度分析等多个维度：
+  * **质量类**: SkyworkLlamaScorer, SkyworkQwenScorer, AtheneScorer, RMDeBERTaScorer, Gpt2HarmlessScorer, Gpt2HelpfulScorer, InfOrmScorer, DeitaQScorer, DebertaScorer, FinewebEduScorer, TextbookScorer, QuRateScorer, CleanlinessScorer, ProfessionalismScorer, ReadabilityScorer, ReasoningScorer, UniEvalD2tScorer, UniEvalDialogScorer, UniEvalFactScorer, UniEvalSumScorer
+  * **复杂度类**: DeitaCScorer, IFDScorer, ThinkingProbScorer, PPLScorer, NormLossScorer, UPDScorer, ComplexityScorer
+  * **其他类**: GraNdScorer, NuclearNormScorer, EffectiveRankScorer, Task2VecScorer, MIWVScorer, SelectitTokenScorer, SelectitSentenceScorer, SelectitModelScorer, HESScorer, EmbedSVDEntropyScorer, AskLlmScorer, FailRateScorer, InstagScorer
 
 * ⚖️ **LLM-as-a-Judge 评分器**: 利用强大的 LLM 作为 "法官"，通过模拟人类的判断来评分数据。  
   在此框架中，常用的维度有 Q、A 和 QA：
@@ -37,9 +37,9 @@
   * Correctness（Q & QA）：内容正确性
   * Meaningfulness（Q & QA）：意义/价值
 
-* 🧠 **启发式评分器**: 使用启发式方法评分数据。本框架集成了 23 种启发式评分器，涵盖多样性、统计特征、内容检测等多个维度：
+* 🧠 **启发式评分器**: 使用启发式方法评分数据。本框架集成了 25 种启发式评分器，涵盖多样性、统计特征、内容检测等多个维度：
   * **多样性类**: VendiScorer, KNNScorer, ApsScorer, ApjsScorer, RadiusScorer, ClusterInertiaScorer, PartitionEntropyScorer, NovelSumScorer, FacilityLocationScorer, UniqueNgramScorer, UniqueNtokenScorer, MtldScorer, VocdDScorer, TokenEntropyScorer, GramEntropyScorer, HddScorer
-  * **统计特征类**: TokenLengthScorer, StrLengthScorer, TreeInstructScorer, LogDetDistanceScorer
+  * **统计特征类**: TokenLengthScorer, StrLengthScorer, LogicalWordCountScorer, CompressRatioScorer, TreeInstructScorer, LogDetDistanceScorer
   * **内容检测类**: ThinkOrNotScorer, PureThinkScorer, TsPythonScorer
 
 ## 安装
@@ -52,7 +52,7 @@ cd OpenDataArena-Tool/data_scorer
 pip install -r requirements.txt
 pip install flash_attn==2.7.4.post1 --no-build-isolation
 # if you want to calculate fail rate, run the following command, which will install the lighteval package
-cd model_based/fail_rate
+cd model_based/scorers/fail_rate
 pip install -e .[dev]
 ```
 

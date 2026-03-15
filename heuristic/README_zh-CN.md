@@ -17,7 +17,7 @@
 
 ## 📦 支持的评分器
 
-本框架集成了 **23 种启发式评分器**，涵盖多样性、统计特征、内容检测等多个维度：
+本框架集成了 **25 种启发式评分器**，涵盖多样性、统计特征、内容检测等多个维度：
 
 ### 📈 多样性类
 
@@ -48,6 +48,8 @@
 - **StrLengthScorer**: 字符串长度统计
 - **TreeInstructScorer**: 语法树统计
 - **LogDetDistanceScorer**: 对数行列式距离评分
+- **LogicalWordCountScorer**: 逻辑词计数
+- **CompressRatioScorer**: 压缩比评分
 
 ### 🔍 内容检测类
 
@@ -100,6 +102,7 @@ scorers:
 - **`num_gpu`**: 全局可用 GPU 总数（可选，默认 0，启发式评分通常不需要 GPU）
 - **`num_gpu_per_job`**: 全局默认的每任务 GPU 数量（可选，默认 0，启发式评分通常不需要 GPU）
 - **`scorers`**: 评分器列表，每个评分器可指定 `max_workers` 控制并行度
+- **`resume`**: 是否启用断点续打（可选，默认 false）。启用后，程序会跳过已完成的样本，从上次中断处继续评分。**注意：使用此功能时，输入数据中每条记录必须包含 `id` 字段用于唯一标识**
 
 ### 2. 准备数据
 
@@ -114,16 +117,45 @@ scorers:
 - `instruction`: 问题或指令（必需）
 - `output`: 回答或输出（对于 QA 类评分器必需）
 - `input`: 额外的输入字段（可选）
+- `id`: 数据唯一标识（**使用断点续打功能时必需**，用于区分和跳过已完成的样本）
 - 其他字段: 某些评分器可能还要求其它特定字段，具体请参考对应评分器的说明或配置文档
 
 ### 3. 运行评估
 
 ```bash
-python main_para.py --config configs/my_scorer.yaml
+python main.py --config configs/my_scorer.yaml
 ```
 
 **参数说明**:
 - `--config`: YAML 配置文件路径
+
+### 4. 断点续打
+
+当评估大规模数据集时，若程序中途中断，可使用**断点续打**功能从上次中断处继续，避免重复计算。
+
+**使用方法**：在配置 YAML 文件中添加 `resume: true`：
+
+```yaml
+input_path: /path/to/your/data.jsonl
+output_path: results/my_experiment
+resume: true   # 启用断点续打
+
+scorers:
+  - name: TokenLengthScorer
+    encoder: o200k_base
+    fields: ["instruction", "input", "output"]
+```
+
+**重要说明**：
+- 使用断点续打时，**输入数据中每条记录必须包含 `id` 字段**，用于唯一标识每条数据，以便程序正确跳过已完成的样本
+- 若数据中缺少 `id` 字段，程序无法正确识别已评分样本，可能导致重复计算或结果错误
+
+**数据格式示例**（需包含 id）：
+
+```json
+{"id": "sample_001", "instruction": "What is ML?", "output": "Machine learning is..."}
+{"id": "sample_002", "instruction": "Explain NN", "output": "Neural networks are..."}
+```
 
 ## 🔧 CPU 并行机制
 

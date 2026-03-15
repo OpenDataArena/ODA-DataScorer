@@ -6,6 +6,6 @@ scorers:
 - name: UniEvalD2tScorer
   model: MingZhong/unieval-sum
   max_length: 1024
-  batch_size: 2
+  batch_size: 4
   overall: true
   num_gpu_per_job: 1

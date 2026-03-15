@@ -1,4 +1,4 @@
-input_path: ../data_process/example_input.jsonl
+input_path: ../data_process/example_input_UniEvalSumScorer.jsonl
 output_path: results/UniEvalSumScorer/
 num_gpu: 4
 num_gpu_per_job: 1

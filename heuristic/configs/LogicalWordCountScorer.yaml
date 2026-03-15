@@ -1,0 +1,61 @@
+input_path: ../data_process/example_input.jsonl
+output_path: results/LogicalWordCountScorer/
+num_gpu: 0
+num_gpu_per_job: 0
+scorers:
+- name: LogicalWordCountScorer
+  fields:
+  - instruction
+  - input
+  - output
+  # Fine words can be directly written here (also supports fine_words_path to specify a vocabulary file, one word per line)
+  fine_words:
+  - Therefore
+  - Thus
+  - Hence
+  - Consequently
+  - Consequently
+  - Since
+  - Because
+  - According
+  - Accordingly
+  - Leading
+  - Lead
+  - Led
+  - Leads
+  - So
+  - Calculate
+  - Calculates
+  - Calculated
+  - Calculating
+  - Calculation
+  - Calculations
+  - Verify
+  - Verifies
+  - Verifing
+  - Verified
+  - Verification
+  - Verifications
+  - Verifier
+  - Recall
+  - Recalls
+  - Recalling
+  - Recalled
+  - Note
+  - Notes
+  - Noted
+  - Noting
+  - Think
+  - Alternatively
+  - Alternative
+  - Perhaps
+  - Maybe
+  - However
+  - But
+  - Unless
+  - Wait
+  - Given
+  
+  match_mode: token
+  return_counts: false # whether to output the count of each fine word to the counts field (default false)
+  max_workers: 16
